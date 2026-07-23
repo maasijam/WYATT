@@ -15,6 +15,7 @@
 - Midi IO (TRS Type B)
 - 3 CV ins
 - Micro SD Card
+- 20 HP
 <br/>
 <br/>
 
