@@ -1,5 +1,8 @@
 # WYATT - A Daisy Seed based Eurorack module
 
+> [!DISCLAIMER]
+> This is a DIY project. Use at your own risk.
+
 ## Features
 - Daisy Seed based
 - Big color tft (ili9341)
