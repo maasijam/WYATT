@@ -25,4 +25,5 @@
 ## Known Problems
 + The switch debouncing is sometimes a bit buggy. If you hold down a switch for an extended period, it triggers multiple times. This seems to be an issue related to the shift registers. I have already increased the "delay_ticks" in the shift register configuration; this improves the situation but doesn't solve the problem completely. If anyone has a tip, please feel free to post it under "Issues".
 
+## Images
 ![maasijam wyatt panel](Hardware/Images/DSC00858.jpg)
