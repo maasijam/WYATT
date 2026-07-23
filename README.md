@@ -1,4 +1,4 @@
-<h1>WYATT - A Daisy Seed based Eurorack module</h1>
+# WYATT - A Daisy Seed based Eurorack module
 
 > [!NOTE]
 > For the TFT display to work correctly, you need to change the following line in libDaisy:
