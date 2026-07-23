@@ -1,0 +1,2037 @@
+#include "../../daisy_wyatt.h"
+#include "daisysp.h"
+#include "core_cm7.h"
+#include "../../Tft/ili9341_ui_driver.hpp"
+#include "utils.h"
+#include "grain.h"
+#include "gateInEnhanced.h"
+#include "bitmaps.h"
+#include "osc_lfo.h"
+#include "settings.h"
+#include "../../common/SRButton.hpp"
+
+using namespace daisy;
+using namespace daisysp;
+using namespace wyatt;
+using namespace std;
+using namespace settings;
+
+
+enum UiMode {
+  UI_MODE_START,
+  UI_MODE_CALIBRATION,
+  UI_MODE_ERROR,
+  UI_MODE_RESTORE_STATE,
+  UI_MODE_GLOBAL,
+  UI_MODE_SAVE
+};
+
+enum gw_params
+{
+	NO_CV,
+	GW_PITCH,
+	GW_LENGTH,
+	GW_POSITION,
+	GW_DENSITY,
+	GW_COUNT,
+	GW_SPLAY,
+	GW_JITTER,
+    GW_SCAN_POSITION,
+	GW_RND_PAN,
+	GW_RND_OCT,
+    GW_REVERB,
+	GW_RV_TIME,
+	GW_RV_DAMP,
+	GW_RV_HPF,
+	GW_LFO_WAVE,
+	GW_LFO_SPEED,
+	GW_LFO_RANGE,
+    GW_LFO_AMP,
+    GW_WINDOW,
+    GW_LFO2_WAVE,
+	GW_LFO2_SPEED,
+	GW_LFO2_RANGE,
+    GW_LFO2_AMP,
+    GW_IN_LVL,
+    GW_OUT_LVL,
+	GW_PARAMS_LAST
+};
+
+enum CharSet {
+    LFO_WAVE,
+    LFO_RANGE,
+    CHAR_SET_LAST
+};
+
+enum srButtons {
+    SRBUTTON_UP,
+    SRBUTTON_DOWN,
+    SRBUTTON_FUNC,
+    SRBUTTON_SHIFT
+};
+
+// Button long press time
+static const float button_longpress_time = 5000;
+SRButton buttons[4]; // shift register buttons
+
+const int RECORDING_XFADE_OVERLAP = 100; // Samples
+const int RECORDING_BUFFER_SIZE = 48000 * 5; // X seconds at 48kHz
+const int MIN_GRAIN_SIZE = 480; // 10 ms
+const int MAX_GRAIN_SIZE = 48000 * 3; // 3 seconds
+const int MAX_GRAIN_COUNT = 20;
+//const bool SHOW_PERFORMANCE_BARS = true;
+const uint8_t MAX_SPAWN_POINTS_POT = 5;
+const uint8_t MAX_SPAWN_POINTS_CV = 5;
+const uint8_t MAX_SPAWN_POINTS = MAX_SPAWN_POINTS_POT + MAX_SPAWN_POINTS_CV + 2;
+const int SPAWN_BAR_FLASH_MILLIS = 250;
+const int SPAWN_LED_FLASH_MILLIS = 250;
+const int SPAWN_TRIGGER_OUT_MILLIS = 2;
+
+constexpr Pin POWER_TFT_PIN = seed::D25;
+
+DaisyWyatt hw;
+ILI9341UiDriver tft;
+Settings preset;
+
+//GPIO power_tft;
+
+static const uint8_t tftwidth = 320;
+static const uint8_t tftheight = 240;
+
+// using this because issue with creating FIL objects on stack
+#define DSY_TEXT __attribute__((section(".text")))
+
+DSY_TEXT FIL            file; /**< Can't be made on the stack (DTCMRAM) */
+DSY_TEXT FatFSInterface fsi;
+WAV_FormatTypeDef wavHeader;
+DIR dir; 
+FILINFO fno;
+bool fsi_loaded = false;
+std::vector<std::string> filenames;
+const char* err_msg = "nix";
+bool loadSample = false;
+
+GateInEnhanced spawn_gate;
+
+ReverbSc  DSY_SDRAM_BSS   reverb;
+Svf      hpf_l;
+Svf      hpf_r;
+
+Oscillator_lfo lfo[2];
+
+#define PARAM_BUFFER_SIZE 8
+char val_str[PARAM_BUFFER_SIZE];
+
+static uint32_t const buffer_size = 153600; // 320 * 240 * 2
+static uint8_t DMA_BUFFER_MEM_SECTION frame_buffer[buffer_size];
+
+float pos[4] = {0};
+float cv[4] = {0};
+int encValue[5] = {0};
+
+float DSY_SDRAM_BSS recording[RECORDING_BUFFER_SIZE];
+size_t recording_length = RECORDING_BUFFER_SIZE;
+size_t write_head = 0;
+
+
+const size_t RENDERABLE_RECORDING_BUFFER_SIZE = 320;
+const float RECORDING_TO_RENDERABLE_RECORDING_BUFFER_RATIO = RENDERABLE_RECORDING_BUFFER_SIZE / (float)RECORDING_BUFFER_SIZE;
+const float RENDERABLE_RECORDING_TO_RECORDING_BUFFER_RATIO = RECORDING_BUFFER_SIZE / (float)RENDERABLE_RECORDING_BUFFER_SIZE;
+float DSY_SDRAM_BSS renderable_recording[RENDERABLE_RECORDING_BUFFER_SIZE]; // Much lower resolution, for easy rendering
+size_t last_written_renderable_recording_index = 0; 
+
+int16_t DSY_SDRAM_BSS convertBuffer[RECORDING_BUFFER_SIZE];
+
+bool is_recording = false;
+bool is_stopping_recording = false;
+size_t recording_xfade_step = 0;
+
+float spawn_position_scan_speed;
+float spawn_position_offset;
+float spawn_positions_splay;
+float spawn_positions_count;
+float pitch_shift_in_octaves;
+bool primed_for_manual_spawn = true;
+int grain_length;
+float grain_pan;
+float grain_density; // Target concurrent grains
+unsigned int spawn_time; // The number of samples between each new grain
+float actual_spawn_time;
+float spawn_time_spread; // The variance of the spawn rate
+uint32_t last_spawn_time;
+float reverb_wet_mix;
+
+int next_spawn_position_index = 0;
+float spawn_position = 0.f;
+float next_spawn_offset;
+uint32_t samples_since_last_non_manual_spawn = 0;
+
+Grain grains[MAX_GRAIN_COUNT];
+Stack<uint8_t, MAX_GRAIN_COUNT> available_grains;
+
+uint32_t last_oled_update_millis = 0;
+uint32_t last_debug_print_millis = 0;
+uint32_t last_led_update_millis = 0;
+
+int loopArea;
+int startLoop = 20000;
+int endLoop = 200000;
+uint32_t last_spawn_time_at_position[MAX_SPAWN_POINTS] = { 0 };
+
+uint16_t testx = 0;
+void RenderParam(int x, int y, int slider, const char *str);
+void RenderTabRect(int tab);
+void RenderAreaIndicator();
+void ReadSwitches();
+void RenderTab1();
+void RenderTab2();
+void RenderTab3();
+void RenderTab4();
+void RenderSave();
+void RenderRestore();
+void RenderCvSelector(int x, int y,int idx);
+void RenderLfoSelector(int x, int y,int idx);
+void RenderWavSelector(int x, int y,int idx);
+void loadSampleToBuffer(const char* fn,const char* path);
+float clamp(float x, float a, float b);
+float GetCvLfoValue(int param_idx = 0);
+bool IsCvControlled(int param_idx);
+void SetTftParamValue(int param_idx, float param_value);
+bool IsOct(int val);
+void RenderPotParam(int x, int y, int value, const char *str); 
+void RenderRotaryKnob_(int val, int minValue, int maxValue, int centerX, int centerY, int radius);
+void RenderWindow(int x, int y, int value);
+void RenderTab1Row1();
+void RenderTab1Row2();
+void RenderTab1Row3();
+void RowTab1Y();
+void RenderAreaArrow();
+void RenderSplash();
+void RenderCalibration();
+float GetLfoFreq(int range, float speed);
+
+int row1YT1;
+int row2YT1;
+int row3YT1;
+
+int tab_ = 0;
+int wav_y = 10;
+int area_[4] = {0,0,0,0};
+int encScale_ = 1;
+
+float getRndOct(float potvalue);
+void clearMem();
+bool clearMemState = false;
+
+UiMode mode_ = UI_MODE_START;
+
+int paramTftValue[GW_PARAMS_LAST] = {-1,0,0,0,0,100,50,0,0,100,0,0,85,70,10,0,0,0,0,0,0,0,0,0,100,100};
+int paramTftCvValue[GW_PARAMS_LAST];
+int paramTftPotValue[4];
+int cvSelValue_[4] = {0,0,0,0};
+int lfoSelValue_[2] = {0,0};
+int cvAttValue_[4] = {0,0,0,0};
+int lfoAttValue_[2] = {0,0};
+int paramWavVal = -1;
+float cvOffsetValues_[4] = {0,0,0,0};
+const int kNumCvParams = 18;
+const char* cv_selector[kNumCvParams] = {"---","Pitch","Length","Pos","Dens","Count","Splay","Jitter","Scan","RndPan","RndOct","Reverb","RvTime","RvDamp","RvHPF","LfoWave","LfoSpeed","LfoRange"};
+const char* cv_labels[4] = {"CV1","CV2","CV3","CV4"};
+const char* lfo_labels[2] = {"LFO1","LFO2"};
+const char* lfo_wave_labels[10] = {"SINE","TRI","SAW","RAMP","SQR","SMOO","RND","PTRI","PSAW","PSQR"};
+const char* lfo_range_labels[3] = {"SLOW","MED","FAST"};
+
+// Performance metrics.
+CpuLoadMeter cpu_load_meter;
+int droppedFrames = 0;
+
+float avg_cpu_;
+float min_cpu_;
+float max_cpu_;
+float lfo_val[2];
+int oct_val;
+
+static const size_t kFadeLengthMin = 480;
+size_t kFadeLength;
+
+// settings
+bool readyToSavePreset = false; 
+bool readyToRestorePreset = false;
+void SavePreset();
+void LoadPreset();
+bool readyToSaveCalibration = false;
+void LoadCalibration();
+void SaveCalibration();
+int calibrationLoader = 0;
+
+int debugVal = 0;
+
+class ControlHandler
+{
+public:
+	
+	float cv;
+	float cvOffset;
+	float knob;
+	
+	float value;
+	int param_idx;
+
+	ControlHandler(int idx = 0)
+	{	
+		param_idx = idx;
+
+		cv = 0.0;
+		cvOffset = 0.0;
+
+		knob = 0.0;
+		value = 0.0;
+	}
+
+};
+
+ControlHandler pitch_val(GW_PITCH);
+ControlHandler length_val(GW_LENGTH);
+ControlHandler position_val(GW_POSITION);
+ControlHandler density_val(GW_DENSITY);
+ControlHandler count_val(GW_COUNT);
+ControlHandler splay_val(GW_SPLAY);
+ControlHandler jitter_val(GW_JITTER);
+ControlHandler reverb_mix_val(GW_REVERB);
+ControlHandler rnd_pan_val(GW_RND_PAN);
+ControlHandler rnd_oct_val(GW_RND_OCT);
+ControlHandler in_lvl_val(GW_IN_LVL);
+ControlHandler out_lvl_val(GW_OUT_LVL);
+ControlHandler reverb_time_val(GW_RV_TIME);
+ControlHandler reverb_damp_val(GW_RV_DAMP);
+ControlHandler reverb_hpf_val(GW_RV_HPF);
+ControlHandler lfo_wave_val(GW_LFO_WAVE);
+ControlHandler lfo_speed_val(GW_LFO_SPEED);
+ControlHandler lfo_amp_val(GW_LFO_AMP);
+ControlHandler lfo_range_val(GW_LFO_RANGE);
+ControlHandler scan_position_val(GW_SCAN_POSITION);
+
+
+void lightenPixel(iVec2 coords, uint8_t color) {
+    tft.DrawPixel(coords.x, coords.y, color);
+}
+
+inline float envelope(float t) {
+    return t * t * (3.0f - 2.0f * t);
+}
+
+int clamp_int(int x, int a, int b)
+    {
+        return std::max(a,std::min(b,x));   
+    }
+float GetParamTftValue(int idx) {
+    float pVal = paramTftValue[idx] / 100.0;
+    return pVal;
+};
+float WindowVal(float in) { return sin(HALFPI_F * in); }
+
+
+// Returns the sample offset of the nth spawn
+inline size_t get_spawn_position(int index) {
+    int unwrapped_spawn_position = spawn_position_offset;
+                    
+    // Modify the spawn position based on splay and count
+    if (index >= (int)spawn_positions_count - 1) {
+        unwrapped_spawn_position += spawn_positions_splay;
+    } else if (index != 0) {
+        unwrapped_spawn_position += index * (spawn_positions_splay / (spawn_positions_count - 2));
+    }
+    
+    return fwrap(unwrapped_spawn_position, 0.f, recording_length);
+}
+
+void draw_recorded_waveform2() {
+    uint8_t last_amplitude = 0;
+            // Traversing backwards stops the leading wave of recording
+            // affecting values infront of it due to how the smoothing filter works
+        
+            for (int x = 320 - 1; x >= 0; x--) {
+                size_t renderable_recording_index = (x / (float)320) * RENDERABLE_RECORDING_BUFFER_SIZE;
+
+                uint8_t amplitude = min(128.f, (renderable_recording[renderable_recording_index] / 0.1f * 128) * out_lvl_val.value);
+
+                // Smooth out the waveform
+                // TODO: Smooth differently, this produces weird classic LPF shapes
+                if (x > 0) {
+                    amplitude = amplitude * 0.4 + last_amplitude * 0.6;
+                }
+                last_amplitude = amplitude;
+
+                uint8_t margin = (128 - amplitude) / 2;
+                if(amplitude > 0) {
+
+                for (uint8_t y = margin; y < 128 - margin; y++) {
+                    tft.DrawPixel(x, y + wav_y, COLOR_GRAY);
+                }
+                }
+            }
+       
+}
+
+void draw_write_head_indicator2() {
+    // Write head indicator
+            uint16_t write_head_screen_x = ((write_head / (float)RECORDING_BUFFER_SIZE) * 320 - 1);
+            testx = write_head_screen_x;
+            for (int x = 0; x < write_head_indicator_width; x++) {
+                for (int y = 0; y < write_head_indicator_height+2; y++) {
+                    uint16_t screen_x = wrap(x + write_head_screen_x - write_head_indicator_width / 2, 0, 320);
+                    uint16_t screen_y = wrap(y + 69 +wav_y - write_head_indicator_height, 0, 128);
+                    uint16_t bitmap_index = x + (y * write_head_indicator_width);
+
+                    if (is_recording) {
+                        tft.DrawPixel(screen_x, screen_y, COLOR_RED);
+                    } else {
+                        tft.DrawPixel(screen_x, screen_y, IsOct(oct_val) ? COLOR_YELLOW : COLOR_BLUE);
+                    }
+                }
+            }
+
+            tft.DrawLine(write_head_screen_x,12+wav_y,write_head_screen_x,115+wav_y,is_recording ? COLOR_RED : IsOct(oct_val) ? COLOR_YELLOW : COLOR_BLUE);
+}
+
+void draw_grain_spawn_positions2() {
+    // Grain start offset
+            uint8_t y_margin = 8;
+
+            for (int i = 0; i < (int)spawn_positions_count; i++) {
+                float spawn_position_x = get_spawn_position(i) / (float)recording_length * 320;
+                float spawn_position_x_decimal_part = modf(spawn_position_x);
+                int time_since_last_spawn = System::GetNow() - last_spawn_time_at_position[i];
+                float flash_intensity = 1 - (min(SPAWN_BAR_FLASH_MILLIS, time_since_last_spawn) / (float)SPAWN_BAR_FLASH_MILLIS);
+
+                uint8_t minColor = flash_intensity * 2;
+                uint8_t maxColor = 2 + flash_intensity * 12;
+
+                for (uint8_t y = y_margin; y < 128 - y_margin; y++) {
+                    tft.DrawPixel(spawn_position_x, y + wav_y, COLOR_BLUE);
+                }
+            }
+}
+
+
+void draw_grains2() {
+    // Grains
+            for (int j = 0; j < MAX_GRAIN_COUNT; j++) {
+                Grain grain = grains[j];
+
+                if (grain.step <= grain.length) {
+                    uint8_t y = grain.pan * 128;
+                    uint32_t current_offset = wrap(grain.spawn_position + grain.step * grains[j].playback_speed, 0, recording_length);
+                    uint16_t x = (current_offset / (float)recording_length) * 320;
+
+                    float amplitude = 2 * min((grains[j].length - grains[j].step), grains[j].step) / (float)grains[j].length;  
+
+                    tft.DrawPixel(x, y + wav_y, COLOR_ORANGE);
+                    tft.DrawPixel((x + 1) % 320, y + wav_y, COLOR_CYAN);
+                    tft.DrawPixel((x + 2) % 320, y + wav_y, COLOR_DARK_GREEN);
+                }
+            }
+}
+
+
+// Responsible for wrapping the index
+inline float get_sample(int index) {
+    return recording[wrap(index, 0, recording_length)];
+}
+
+inline void record_xfaded_sample(float sample_in) {
+    float xfade_magnitude = (recording_xfade_step + 1) / ((float)RECORDING_XFADE_OVERLAP + 1.f);
+
+    recording[write_head] = lerp(
+        recording[write_head],
+        sample_in,
+        xfade_magnitude
+    );
+}
+
+
+
+void process_controls() {
+    hw.ProcessAnalogControls();
+
+    pitch_val.knob = hw.knob[hw.KNOB_0].Value();
+    pitch_val.value = pitch_val.knob;
+    pitch_val.cv = 0.f;
+    if(IsCvControlled(GW_PITCH)) {
+        pitch_val.cv = GetCvLfoValue(GW_PITCH);
+        pitch_val.value = clamp(pitch_val.knob + pitch_val.cv,0.0,1.0);
+        SetTftParamValue(GW_PITCH,pitch_val.value);
+    }
+    paramTftPotValue[0] = clamp_int(static_cast<int>(pitch_val.value*100),0,100);
+
+    length_val.knob = hw.knob[hw.KNOB_1].Value();
+    length_val.value = length_val.knob;
+    length_val.cv = 0.f;
+    if(IsCvControlled(GW_LENGTH)) {
+        length_val.cv = GetCvLfoValue(GW_LENGTH);
+        length_val.value = clamp(length_val.knob + length_val.cv,0.0,1.0);
+        SetTftParamValue(GW_LENGTH,length_val.value);
+    }
+    paramTftPotValue[1] = clamp_int(static_cast<int>(length_val.value*100),0,100);
+
+    position_val.knob = hw.knob[hw.KNOB_2].Value();
+    position_val.value = position_val.knob;
+    position_val.cv = 0.f;
+    if(IsCvControlled(GW_POSITION)) {
+        position_val.cv = GetCvLfoValue(GW_POSITION);
+        position_val.value = clamp(position_val.knob + position_val.cv,0.0,1.0);
+        SetTftParamValue(GW_POSITION,position_val.value);
+    }
+    paramTftPotValue[2] = clamp_int(static_cast<int>(position_val.value*100),0,100);
+
+    density_val.knob = hw.knob[hw.KNOB_3].Value();
+    density_val.value = density_val.knob;
+    density_val.cv = 0.f;
+    if(IsCvControlled(GW_DENSITY)) {
+        density_val.cv = GetCvLfoValue(GW_DENSITY);
+        density_val.value = clamp(density_val.knob + density_val.cv,0.0,1.0);
+        SetTftParamValue(GW_DENSITY,density_val.value);
+    }
+    paramTftPotValue[3] = clamp_int(static_cast<int>(density_val.value*100),0,100);
+
+
+    jitter_val.knob = GetParamTftValue(GW_JITTER);
+    jitter_val.value = jitter_val.knob;
+    jitter_val.cv = 0.f;
+    if(IsCvControlled(GW_JITTER)) {
+        jitter_val.cv = GetCvLfoValue(GW_JITTER);
+        jitter_val.value = clamp(jitter_val.knob + jitter_val.cv,0.0,1.0);
+        SetTftParamValue(GW_JITTER,jitter_val.value);
+    }
+
+    splay_val.knob = GetParamTftValue(GW_SPLAY);
+    splay_val.value = splay_val.knob;
+    splay_val.cv = 0.f;
+    if(IsCvControlled(GW_SPLAY)) {
+        splay_val.cv = GetCvLfoValue(GW_SPLAY);
+        splay_val.value = clamp(splay_val.knob + splay_val.cv,0.0,1.0);
+        SetTftParamValue(GW_SPLAY,splay_val.value);
+    }
+
+    count_val.knob = GetParamTftValue(GW_COUNT);
+    count_val.value = count_val.knob;
+    count_val.cv = 0.f;
+    if(IsCvControlled(GW_COUNT)) {
+        count_val.cv = GetCvLfoValue(GW_COUNT);
+        count_val.value = clamp(count_val.knob + count_val.cv,0.0,1.0);
+        SetTftParamValue(GW_COUNT,count_val.value);
+    }
+    //debugVal = static_cast<int>(count_val.cv*100);
+
+    reverb_mix_val.knob = GetParamTftValue(GW_REVERB);
+    reverb_mix_val.value = reverb_mix_val.knob;
+    reverb_mix_val.cv = 0.f;
+    if(IsCvControlled(GW_REVERB)) {
+        reverb_mix_val.cv = GetCvLfoValue(GW_REVERB);
+        reverb_mix_val.value = clamp(reverb_mix_val.knob + reverb_mix_val.cv,0.0,1.0);
+        SetTftParamValue(GW_REVERB,reverb_mix_val.value);
+    }
+
+    reverb_time_val.knob = GetParamTftValue(GW_RV_TIME);
+    reverb_time_val.value = reverb_time_val.knob;
+    reverb_time_val.cv = 0.f;
+    if(IsCvControlled(GW_RV_TIME)) {
+        //debugVal = 111;
+        reverb_time_val.cv = GetCvLfoValue(GW_RV_TIME);
+        //debugVal = static_cast<int>(reverb_time_val.knob*100);
+        reverb_time_val.value = clamp(reverb_time_val.knob + reverb_time_val.cv,0.0,1.0);
+        //debugVal = static_cast<int>(reverb_time_val.value*100);
+        SetTftParamValue(GW_RV_TIME,reverb_time_val.value);
+    }
+
+    reverb_damp_val.knob = GetParamTftValue(GW_RV_DAMP);
+    reverb_damp_val.value = reverb_damp_val.knob;
+    reverb_damp_val.cv = 0.f;
+    if(IsCvControlled(GW_RV_DAMP)) {
+        reverb_damp_val.cv = GetCvLfoValue(GW_RV_DAMP);
+        reverb_damp_val.value = clamp(reverb_damp_val.knob + reverb_damp_val.cv,0.0,1.0);
+        SetTftParamValue(GW_RV_DAMP,reverb_damp_val.value);
+    }
+
+    reverb_hpf_val.knob = GetParamTftValue(GW_RV_HPF);
+    reverb_hpf_val.value = reverb_hpf_val.knob;
+    reverb_hpf_val.cv = 0.f;
+    if(IsCvControlled(GW_RV_HPF)) {
+        reverb_hpf_val.cv = GetCvLfoValue(GW_RV_HPF);
+        reverb_hpf_val.value = clamp(reverb_hpf_val.knob + reverb_hpf_val.cv,0.0,1.0);
+        SetTftParamValue(GW_RV_HPF,reverb_hpf_val.value);
+    }
+
+
+    rnd_pan_val.knob = GetParamTftValue(GW_RND_PAN);
+    rnd_pan_val.value = rnd_pan_val.knob;
+    rnd_pan_val.cv = 0.f;
+    if(IsCvControlled(GW_RND_PAN)) {
+        rnd_pan_val.cv = GetCvLfoValue(GW_RND_PAN);
+        rnd_pan_val.value = clamp(rnd_pan_val.knob + rnd_pan_val.cv,0.0,1.0);
+        SetTftParamValue(GW_RND_PAN,rnd_pan_val.value);
+    }
+
+    rnd_oct_val.knob = GetParamTftValue(GW_RND_OCT);
+    rnd_oct_val.value = rnd_oct_val.knob;
+    rnd_oct_val.cv = 0.f;
+    if(IsCvControlled(GW_RND_OCT)) {
+        rnd_oct_val.cv = GetCvLfoValue(GW_RND_OCT);
+        rnd_oct_val.value = clamp(rnd_oct_val.knob + rnd_oct_val.cv,0.0,1.0);
+        SetTftParamValue(GW_RND_OCT,rnd_oct_val.value);
+    }
+
+    in_lvl_val.knob = GetParamTftValue(GW_IN_LVL);
+    in_lvl_val.value = in_lvl_val.knob;
+    in_lvl_val.cv = 0.f;
+    if(IsCvControlled(GW_IN_LVL)) {
+        in_lvl_val.cv = GetCvLfoValue(GW_IN_LVL);
+        in_lvl_val.value = clamp(in_lvl_val.knob + in_lvl_val.cv,0.0,1.0);
+        SetTftParamValue(GW_IN_LVL,in_lvl_val.value);
+    }
+
+    out_lvl_val.knob = GetParamTftValue(GW_OUT_LVL);
+    out_lvl_val.value = out_lvl_val.knob;
+    out_lvl_val.cv = 0.f;
+    if(IsCvControlled(GW_OUT_LVL)) {
+        out_lvl_val.cv = GetCvLfoValue(GW_OUT_LVL);
+        out_lvl_val.value = clamp(out_lvl_val.knob + out_lvl_val.cv,0.0,1.0);
+        SetTftParamValue(GW_OUT_LVL,out_lvl_val.value);
+    }
+
+    scan_position_val.knob = GetParamTftValue(GW_SCAN_POSITION);
+    scan_position_val.value = scan_position_val.knob;
+    scan_position_val.cv = 0.f;
+    if(IsCvControlled(GW_SCAN_POSITION)) {
+        scan_position_val.cv = GetCvLfoValue(GW_SCAN_POSITION);
+        scan_position_val.value = clamp(scan_position_val.knob + scan_position_val.cv,0.0,1.0);
+        SetTftParamValue(GW_SCAN_POSITION,scan_position_val.value);
+    }
+   
+    lfo[0].SetFreq(GetLfoFreq(paramTftValue[GW_LFO_RANGE],GetParamTftValue(GW_LFO_SPEED)));
+    lfo[0].SetAmp(GetParamTftValue(GW_LFO_AMP));
+    lfo[0].SetWaveform(paramTftValue[GW_LFO_WAVE]);
+
+    lfo[1].SetFreq(GetLfoFreq(paramTftValue[GW_LFO2_RANGE],GetParamTftValue(GW_LFO2_SPEED)));
+    lfo[1].SetAmp(GetParamTftValue(GW_LFO2_AMP));
+    lfo[1].SetWaveform(paramTftValue[GW_LFO2_WAVE]);
+
+    lfo_val[0] = lfo[0].Process();
+    lfo_val[1] = lfo[1].Process();
+
+    // Scan speed
+    spawn_position_scan_speed = with_dead_zone(
+        position_val.cv + map_to_range(position_val.knob, 1, -1) * abs(map_to_range(position_val.knob, 1, -1)),
+        0.02f
+    );
+
+    // Splay
+    // Deadzone at 0 to the spawn position splay
+    float splay_value = with_dead_zone(
+        splay_val.cv + map_to_range(splay_val.knob, 1, -1) * abs(map_to_range(splay_val.knob, 1, -1)) * 0.5f,
+        0.1f
+    );
+    spawn_positions_splay = splay_value * recording_length;
+     
+    // Count
+    spawn_positions_count = 2.f // This should technically be 1 if splay is 0, but it simpler if we just pretend there's always 2
+            + 0.7f // Start precocked so it doesn't take much pot twiddling to see the 3rd spawn point
+            + map_to_range(count_val.knob, 0, MAX_SPAWN_POINTS_POT) 
+            + map_to_range(count_val.cv, 0, MAX_SPAWN_POINTS_CV);
+    // Make sure it doesn't dip below 2.7 due to negative cv values
+    spawn_positions_count = max(spawn_positions_count, 2.7f);
+
+    // Pitch
+    pitch_shift_in_octaves = with_dead_zone(
+        map_to_range(pitch_val.knob, -2.1, 2.1),
+        0.1f
+    ) + pitch_val.cv * 5;
+    oct_val = static_cast<int>(pitch_shift_in_octaves*100.0);
+
+    pitch_shift_in_octaves += getRndOct(map_to_range(rnd_oct_val.value, 0, 1));
+
+    // Length
+    float grain_length_control = coerce_in_range(length_val.cv + length_val.knob * 2 - 1, -1, 1);
+    grain_length = map_to_range(pow(abs(grain_length_control), 2), MIN_GRAIN_SIZE, MAX_GRAIN_SIZE);
+    if (grain_length_control < 0) {
+        grain_length = -grain_length;
+    }
+
+    // Density
+    float density_control = coerce_in_range(density_val.value, 0, 1);
+    //if (density_length_link_switch.Pressed()) {
+    //    spawn_time = map_to_range(1 - log10f(1 + density_control * 9), 0, MAX_GRAIN_SIZE / 4);
+    //} else {
+        grain_density = map_to_range(pow(density_control, 2), 0.5f, MAX_GRAIN_COUNT);
+        spawn_time = abs(grain_length) / grain_density;
+    //}
+
+    // Jitter
+    spawn_time_spread = jitter_val.value;
+    if (density_control <= 0.001) {
+        actual_spawn_time = INFINITY;
+    } else {
+        actual_spawn_time = spawn_time * (1 + next_spawn_offset * spawn_time_spread);
+    }
+
+    // Pan
+    grain_pan = 0.5f + (randF(-0.5f, 0.5f) * map_to_range(rnd_pan_val.value, 0, 1));
+
+    // Reverb
+    float reverb_amount = max(0.f, reverb_mix_val.knob + reverb_mix_val.cv);
+    //float reverb_time = fmap(min(reverb_amount, 0.5f) * 2, 0.5f, 0.99f);
+    //float reverb_damp = fmap(reverb_amount, 100.f, 24000.f, Mapping::LOG);
+    //reverb_wet_mix = min(reverb_amount, 0.1f) * 7;
+    reverb_wet_mix = fmap(reverb_amount, 0.f, 0.99f);
+
+    float reverb_hpf = fmap(reverb_hpf_val.value, 20.f, 5000.f);
+    hpf_l.SetFreq(reverb_hpf);
+    hpf_r.SetFreq(reverb_hpf);
+    
+    /** Update Params with the four knobs */
+    float time_knob = reverb_time_val.value;
+    float reverb_time      = fmap(time_knob, 0.4f, 0.99f);
+
+    float damp_knob = reverb_damp_val.value;
+    float reverb_damp = fmap(damp_knob, 100.f, 24000.f, Mapping::LOG);
+
+    reverb.SetFeedback(reverb_time);
+    reverb.SetLpFreq(reverb_damp);
+
+    
+    //hw.SetLed(is_recording ? true : false);
+    //hw.UpdateLed();
+    
+
+    // Spawn trigger out
+    int time_since_last_spawn = System::GetNow() - last_spawn_time;
+    
+}
+
+void spawn_grain() {
+    size_t new_grain_index = available_grains.PopBack();
+
+    grains[new_grain_index].length = abs(grain_length);
+    grains[new_grain_index].step = 0;
+    grains[new_grain_index].pan = grain_pan;
+    
+    grains[new_grain_index].spawn_position_index = next_spawn_position_index;
+    grains[new_grain_index].spawn_position = get_spawn_position(next_spawn_position_index);
+
+    grains[new_grain_index].spawn_time_millis = System::GetNow();
+    last_spawn_time = grains[new_grain_index].spawn_time_millis;
+
+    grains[new_grain_index].pitch_shift_in_octaves = pitch_shift_in_octaves;
+
+    // Reverse the playback if the length is negative
+    if (grain_length > 0) {
+        grains[new_grain_index].playback_speed = pow(2, pitch_shift_in_octaves);
+    } else {
+        grains[new_grain_index].playback_speed = -pow(2, pitch_shift_in_octaves);
+    }
+
+    next_spawn_offset = randF(-1.f, 1.f); // +/- 100%
+    next_spawn_position_index = wrap(next_spawn_position_index + 1, 0, (int)spawn_positions_count);
+}
+
+void record_sample(float sample) {
+    if (is_stopping_recording) {
+        // Record a little extra at the end of the recording so we can xfade the values
+        // and stop the pop sound
+        record_xfaded_sample(sample);
+
+        recording_xfade_step--;
+
+        if (recording_xfade_step == 0) {
+            is_recording = false;
+            is_stopping_recording = false;
+        }
+    } else if (recording_xfade_step < RECORDING_XFADE_OVERLAP) {
+        // xfade in the start of the recording to stop the pop sound
+        record_xfaded_sample(sample);
+
+        recording_xfade_step++;
+    } else {
+        recording[write_head] = sample;
+    }
+}
+
+void record_sample_for_display(float sample) {
+    // TODO: Record positive and negative values seperately
+    size_t renderable_recording_index = write_head * RECORDING_TO_RENDERABLE_RECORDING_BUFFER_RATIO;
+
+    // Clear out the element when we first start writing fresh values to it
+    if (write_head == 0 || renderable_recording_index > last_written_renderable_recording_index) {
+        renderable_recording[renderable_recording_index] = 0;
+    }
+
+    // Downsample the samples into renderable_recording_index by averaging them
+    renderable_recording[renderable_recording_index] += abs(sample) / RENDERABLE_RECORDING_TO_RECORDING_BUFFER_RATIO;
+    last_written_renderable_recording_index = renderable_recording_index;
+    
+    if (recording_length < RECORDING_BUFFER_SIZE) {
+        recording_length++;
+    }
+}
+
+void increment_write_head() {
+    write_head++;
+
+    if (write_head >= RECORDING_BUFFER_SIZE) {
+        write_head = 0;
+    }
+}
+
+void calculate_audio_out(float in_l, float in_r, float &out_l, float &out_r) {
+    float wet_l = 0.f;
+    float wet_r = 0.f;
+
+    for (int j = 0; j < MAX_GRAIN_COUNT; j++) {
+        if (is_alive(grains[j])) {
+            size_t buffer_index = grains[j].spawn_position + grains[j].step * grains[j].playback_speed;
+
+            // playback_speed is a float so we need to interpolate between samples
+            float sample = get_sample(buffer_index);
+            float next_sample = get_sample(buffer_index + 1);
+
+            float decimal_portion = modf(grains[j].step * grains[j].playback_speed);
+            float interpolated_sample = sample * (1 - decimal_portion) + next_sample * decimal_portion;
+
+            //float signal = 0.f;
+            float vol = 0.5f;
+            kFadeLength = ((((grains[j].length / 2) - kFadeLengthMin) * (100-paramTftValue[GW_WINDOW]))/100) + kFadeLengthMin; 
+            if (grains[j].step <= kFadeLength) {
+                vol = (grains[j].step / float(kFadeLength)) * 0.5f;
+            }
+            int from_end = abs(grains[j].length - grains[j].step);
+            if (from_end <= kFadeLength) {
+                vol = (from_end / float(kFadeLength)) * 0.5f;
+            }
+            float signal = interpolated_sample * envelope(vol);
+
+            //float envelope_progress = min((grains[j].length - grains[j].step), grains[j].step) / max(1.f, (float)grains[j].length);
+            //float signal = interpolated_sample * envelope(envelope_progress);
+
+            wet_l += (1.f - grains[j].pan) * signal;
+            wet_r += grains[j].pan * signal;
+
+            grains[j].step++;
+
+            if (grains[j].step > grains[j].length) {
+                available_grains.PushBack(j);
+            }
+        }
+    }
+
+    float reverb_in_l = wet_l;
+    float reverb_in_r = wet_r;
+    float reverb_wet_l, reverb_wet_r;
+    reverb.Process(reverb_in_l, reverb_in_r, &reverb_wet_l, &reverb_wet_r);
+    hpf_l.Process(reverb_wet_l);
+    hpf_r.Process(reverb_wet_r);
+    out_l = (reverb_in_l + (hpf_l.High() * reverb_wet_mix) + (in_l * in_lvl_val.value)) * out_lvl_val.value;
+    out_r = (reverb_in_r + (hpf_r.High() * reverb_wet_mix) + (in_r * in_lvl_val.value)) * out_lvl_val.value;
+
+
+}
+
+void init() {
+    
+    
+    // Populate available grains stack
+    for (u_int8_t i = 0; i < MAX_GRAIN_COUNT; i++) {
+        available_grains.PushBack(i);
+    }
+
+    // Clear the buffers
+    clearMem();
+
+    cpu_load_meter.Init(hw.AudioSampleRate(), hw.AudioBlockSize());
+    reverb.Init(hw.AudioSampleRate());
+    hpf_l.Init(hw.AudioSampleRate());
+    hpf_l.SetFreq(400.0);
+    hpf_l.SetRes(0);
+    hpf_l.SetDrive(0);
+    hpf_r.Init(hw.AudioSampleRate());
+    hpf_r.SetFreq(400.0);
+    hpf_r.SetRes(0);
+    hpf_r.SetDrive(0);
+    
+}
+
+
+void AudioCallback(
+    AudioHandle::InputBuffer  in,
+    AudioHandle::OutputBuffer out,
+    size_t size
+) {
+    cpu_load_meter.OnBlockStart();
+	droppedFrames++;
+
+    process_controls();
+
+    
+        // Process audio output
+        for(size_t i = 0; i < size; i++)
+        {
+            OUT_L[i] = 0.f;
+            OUT_R[i] = 0.f;
+            
+            if(!loadSample) {
+            
+                if (is_recording) {
+                    record_sample(IN_L[i] * in_lvl_val.value);
+                    record_sample_for_display(IN_L[i] * in_lvl_val.value);
+                } 
+
+                // Progresses the write head regardless of if we're recording
+                
+                    increment_write_head();
+                
+                
+
+                // Work out if we need to spawn a grain this sample
+                samples_since_last_non_manual_spawn++;
+
+                bool has_spawn_timer_elapsed = actual_spawn_time != INFINITY 
+                        && samples_since_last_non_manual_spawn >= actual_spawn_time;
+                bool should_manual_spawn = (spawn_gate.RisingEdge()) && primed_for_manual_spawn;
+
+                // Spawn grains
+                if ((has_spawn_timer_elapsed || should_manual_spawn) && !available_grains.IsEmpty()) {
+                    spawn_grain();
+
+                    if (has_spawn_timer_elapsed) {
+                        samples_since_last_non_manual_spawn = 0;
+                    }
+
+                    if (should_manual_spawn) {
+                        primed_for_manual_spawn = false;
+                    }
+                }
+
+                calculate_audio_out(IN_L[i], IN_L[i], OUT_L[i], OUT_R[i]);
+                if(spawn_position_scan_speed != 0) {
+                    spawn_position_offset += spawn_position_scan_speed;
+                } else {
+                   spawn_position_offset = map_to_range(scan_position_val.value, 0.f, RECORDING_BUFFER_SIZE);
+                }
+                
+                spawn_position_offset = fwrap(spawn_position_offset, 0, RECORDING_BUFFER_SIZE);
+                //spawn_position_offset = fwrap(spawn_position_offset + map_to_range(scan_position_val.value, 0.f, RECORDING_BUFFER_SIZE), 0, RECORDING_BUFFER_SIZE);
+                
+            }
+        }
+    
+
+
+    cpu_load_meter.OnBlockEnd();
+	droppedFrames--;
+}
+
+char* GetIntAsString_(int val) { 
+        snprintf(val_str, PARAM_BUFFER_SIZE, "%d", val);
+        return val_str; 
+    }
+
+void StoreFileNames(const char* path)
+{
+    FRESULT fr;
+    fr = f_opendir(&dir, path);
+    if (fr != FR_OK) {
+        // Handle error (e.g., print to serial)
+        err_msg = "Could not open dir";
+        return;
+    }
+    for (;;) {
+        // Read a directory item
+        fr = f_readdir(&dir, &fno);
+        if (fr != FR_OK || fno.fname[0] == 0) break; // Error or end of directory
+
+        // Skip hidden files and directories that start with a dot
+        if (fno.fname[0] == '.') continue;
+
+        if (fno.fattrib & AM_DIR) {
+            
+        } else {
+            // It is a file
+            if(strstr(fno.fname, ".wav") || strstr(fno.fname, ".WAV"))
+            {
+            filenames.push_back(fno.fname);
+            err_msg = "Filename gespeichert";
+            }
+        }
+    }
+
+    // Close the directory
+    f_closedir(&dir);
+}
+
+
+int main(void)
+{
+    //power_tft.Init(POWER_TFT_PIN, GPIO::Mode::OUTPUT);
+    
+    hw.Init(true);
+    tft.Init(frame_buffer);
+    
+    if(tft.IsRender())
+        {
+            tft.Fill(COLOR_BLACK);
+            RenderSplash();
+            tft.Update();
+        }
+    //power_tft.Write(true);
+    hw.DelayMs(1500);
+    preset.Init(&hw);
+    LoadCalibration();
+    LoadPreset();
+    
+    init();
+
+
+     /** SD card next */
+    SdmmcHandler::Config sd_config;
+    SdmmcHandler         sdcard;
+    sd_config.Defaults();
+    sd_config.speed           = daisy::SdmmcHandler::Speed::FAST; 
+    sd_config.width           = daisy::SdmmcHandler::BusWidth::BITS_4;
+    sdcard.Init(sd_config);
+
+    fsi.Init(FatFSInterface::Config::MEDIA_SD);
+    FATFS& fs = fsi.GetSDFileSystem();
+    char filename[32];
+    f_mount(&fs, "0:", 1);
+
+    hw.DelayMs(100);
+    StoreFileNames("/samples");
+    
+    for (size_t i = 0; i < 2; i++)
+    {
+        lfo[i].Init(hw.AudioSampleRate());
+        lfo[i].SetFreq(400.f);
+        lfo[i].SetAmp(1.f);
+        lfo[i].SetWaveform(lfo[i].WAVE_TRI);
+    }
+    
+
+    
+
+    // Set up buttons as shift reg buttons
+    buttons[SRBUTTON_UP].Init(hw.switches_sr_, 12, button_longpress_time);
+    buttons[SRBUTTON_DOWN].Init(hw.switches_sr_, 13, button_longpress_time);
+    buttons[SRBUTTON_FUNC].Init(hw.switches_sr_, 14, button_longpress_time);
+    buttons[SRBUTTON_SHIFT].Init(hw.switches_sr_, 4, button_longpress_time);
+
+        
+    //Start the adc
+    hw.StartAdc();
+    hw.StartAudio(AudioCallback);
+
+    uint32_t last_save_time = System::GetNow(); 
+    uint32_t last_load_sample_time = System::GetNow(); 
+    while (1) 
+    {
+                
+        ReadSwitches();
+
+        hw.SetLed(hw.LED_RED, is_recording ? true : false);
+        hw.UpdateLeds();
+        
+        avg_cpu_ = cpu_load_meter.GetAvgCpuLoad();
+        min_cpu_ = cpu_load_meter.GetMinCpuLoad();
+        max_cpu_ = cpu_load_meter.GetMaxCpuLoad();
+
+        if(tft.IsRender())
+        {
+            tft.Fill(COLOR_BLACK);
+
+            switch (mode_)
+            {
+            case UI_MODE_START:
+                RenderTab1();
+                RenderTab2();
+                RenderTab3();
+                RenderTab4();
+            break;
+            case UI_MODE_SAVE:
+                RenderSave();
+            break;
+            case UI_MODE_RESTORE_STATE:
+                RenderRestore();
+            break;
+            case UI_MODE_CALIBRATION:
+                RenderCalibration();
+            break;
+            default:
+                break;
+            }
+
+            tft.Update();
+        }
+        //hw.DelayMs(1);
+
+        if (System::GetNow() - last_load_sample_time > 100 && loadSample)
+        {
+            err_msg = filenames[paramWavVal].c_str();
+            loadSampleToBuffer(filenames[paramWavVal].c_str(),"/samples");  
+            loadSample = false;
+            
+        }
+
+        if (System::GetNow() - last_save_time > 100 && readyToSavePreset)
+        {
+          SavePreset();
+          last_save_time = System::GetNow();
+          readyToSavePreset = false;
+        }
+        if (readyToRestorePreset) {
+            preset.RestoreTheSettings();
+            //settingsall.RestoreCVOutCal();
+            readyToRestorePreset = false;
+        }
+        if (readyToSaveCalibration)
+        {
+          SaveCalibration();
+          readyToSaveCalibration = false;
+        }
+
+        hw.DelayMs(1);
+        
+    }
+}
+
+int map_(int x, int in_min, int in_max, int out_min, int out_max) {
+        return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+    }
+
+
+void RenderParam(int x, int y, int value, const char *str) 
+{
+    int paramPos = map_(value,0,100,0,53);
+    tft.DrawRect(x,y,60,36,COLOR_WHITE);
+    tft.FillRect(Rectangle(x + 1, y + 21, 59, 15), COLOR_YELLOW);
+    tft.FillRect(Rectangle(x + 1 + paramPos, y + 22, 6, 14), COLOR_BLACK);
+    tft.WriteStringAligned(str,Font_7x10,Rectangle(x,y-1,60,26),Alignment::centered,COLOR_WHITE);
+}
+void RenderPotParam(int x, int y, int value, const char *str) 
+{
+    int paramPos = map_(value,0,100,0,53);
+    tft.DrawRect(x,y,60,25,COLOR_WHITE);
+    tft.FillRect(Rectangle(x + 1, y + 18, 59, 7), COLOR_YELLOW);
+    tft.FillRect(Rectangle(x + 1 + paramPos, y + 19, 6, 6), COLOR_BLACK);
+    tft.WriteStringAligned(str,Font_7x10,Rectangle(x,y,60,21),Alignment::centered,COLOR_WHITE);
+}
+void RenderParamChar(int x, int y, int value, const char *str, int charset) 
+{
+    const char *label;
+    
+    switch (charset)
+    {
+    case LFO_WAVE:
+        label = lfo_wave_labels[value];
+        break;
+    case LFO_RANGE:
+        label = lfo_range_labels[value];
+        break;
+    default:
+        break;
+    }
+    int waveform = value;
+    tft.DrawRect(x,y,60,36,COLOR_WHITE);
+    tft.FillRect(Rectangle(x + 1, y + 20, 59, 16), COLOR_GRAY);
+    tft.WriteStringAligned(str,Font_7x10,Rectangle(x,y-1,60,26),Alignment::centered,COLOR_WHITE);
+    tft.WriteStringAligned(label,Font_7x10,Rectangle(x,y+21,60,15),Alignment::centered,COLOR_WHITE);
+}
+
+void RenderWindow(int x, int y, int value) 
+{
+    int lineLeft = map_(value,0,100,60,15);
+    int lineRight = map_(value,0,100,60,105);
+    int lineTop = map_(value,0,100,0,90);
+    tft.DrawRect(x,y,120,70,COLOR_WHITE);
+    
+    // Aussen
+    tft.DrawLine(x+1,y+69,x+lineLeft,y+5,COLOR_BLUE);
+    tft.DrawLine(x+lineRight,y+5,x+119,y+69,COLOR_BLUE);
+    if(value > 0) {
+        tft.DrawLine(x+lineLeft,y+5,x+lineRight,y+5,COLOR_BLUE);
+    }
+}
+
+void RenderTabRect(int tab)
+{
+    
+    tft.FillRect(Rectangle(0, 0, 75, 6), tab_ == 0 ? COLOR_YELLOW : COLOR_GRAY);
+    tft.FillRect(Rectangle(82, 0, 75, 6), tab_ == 1 ? COLOR_YELLOW : COLOR_GRAY);
+    tft.FillRect(Rectangle(164, 0, 75, 6), tab_ == 2 ? COLOR_YELLOW : COLOR_GRAY);
+    tft.FillRect(Rectangle(245, 0, 75, 6), tab_ == 3 ? COLOR_YELLOW : COLOR_GRAY);
+    
+}
+
+void RenderAreaIndicator() 
+{
+    switch (tab_)
+    {
+    case 0:
+        tft.FillRect(Rectangle(0, 145, 6, 38), area_[tab_] == 0 ? COLOR_YELLOW : COLOR_GRAY);
+        tft.FillRect(Rectangle(0, 190, 6, 38), area_[tab_] == 1 ? COLOR_YELLOW : COLOR_GRAY);
+    break;
+    case 1:
+        tft.FillRect(Rectangle(0, 20, 6, 52), area_[tab_] == 0 ? COLOR_YELLOW : COLOR_GRAY);
+        tft.FillRect(Rectangle(0, 80, 6, 52), area_[tab_] == 1 ? COLOR_YELLOW : COLOR_GRAY);
+        tft.FillRect(Rectangle(0, 140, 6, 52), area_[tab_] == 2 ? COLOR_YELLOW : COLOR_GRAY);
+    break;
+    case 2:
+        tft.FillRect(Rectangle(0, 20, 6, 84), area_[tab_] == 0 ? COLOR_YELLOW : COLOR_GRAY);
+    break;
+    case 3:
+        tft.FillRect(Rectangle(0, 30, 6, 34), area_[tab_] == 0 ? COLOR_YELLOW : COLOR_GRAY);
+        tft.FillRect(Rectangle(0, 74, 6, 41), area_[tab_] == 1 ? COLOR_YELLOW : COLOR_GRAY);
+        tft.FillRect(Rectangle(0, 124, 6, 41), area_[tab_] == 2 ? COLOR_YELLOW : COLOR_GRAY);
+        tft.FillRect(Rectangle(0, 174, 6, 41), area_[tab_] == 3 ? COLOR_YELLOW : COLOR_GRAY);
+    break;
+    default:
+        break;
+    }
+   
+    
+}
+
+void RenderTab1()
+{
+    if(tab_ == 0) {
+        RenderTabRect(tab_);
+        tft.DrawLine(0,65+wav_y,320,65+wav_y,COLOR_GRAY);
+            draw_recorded_waveform2();
+            draw_write_head_indicator2();
+            draw_grain_spawn_positions2();
+            draw_grains2();
+
+            /*RenderParam(20, 145, IsCvControlled(GW_COUNT) ? paramTftCvValue[GW_COUNT] : paramTftValue[GW_COUNT], "COUNT");
+            RenderParam(90, 145, IsCvControlled(GW_SPLAY) ? paramTftCvValue[GW_SPLAY] : paramTftValue[GW_SPLAY], "SPLAY");
+            RenderParam(160, 145, IsCvControlled(GW_JITTER) ? paramTftCvValue[GW_JITTER] : paramTftValue[GW_JITTER], "JITTER");
+            RenderParam(230, 145, IsCvControlled(GW_REVERB) ? paramTftCvValue[GW_REVERB] : paramTftValue[GW_REVERB], "REVERB");
+
+            RenderParam(20, 190, IsCvControlled(GW_RND_PAN) ? paramTftCvValue[GW_RND_PAN] : paramTftValue[GW_RND_PAN], "RND PAN");
+            RenderParam(90, 190, IsCvControlled(GW_RND_OCT) ? paramTftCvValue[GW_RND_OCT] : paramTftValue[GW_RND_OCT], "RND OCT");
+            RenderParam(160, 190, paramTftValue[GW_IN_LVL], "IN LVL");
+            RenderParam(230, 190, paramTftValue[GW_OUT_LVL], "OUT LVL");*/
+            RowTab1Y();
+            RenderTab1Row1();
+            RenderTab1Row2();
+            RenderTab1Row3();
+            
+            
+            RenderAreaArrow();
+            //tft.DrawPixel(2,237,COLOR_BLUE);
+            //debugVal = static_cast<int>(hw.GetCvValue(2)*100.f);
+            //tft.WriteString(GetIntAsString_(debugVal),290,220,Font_7x10,COLOR_WHITE);
+            
+
+        //RenderAreaIndicator();
+    }
+}
+void RenderTab2()
+{
+    if(tab_ == 1) {
+        RenderTabRect(tab_);
+        tft.WriteString("REVERB",20,20,Font_7x10,COLOR_WHITE);
+        RenderParam(20, 35, IsCvControlled(GW_RV_TIME) ? paramTftCvValue[GW_RV_TIME] : paramTftValue[GW_RV_TIME], "TIME");
+        RenderParam(90, 35, IsCvControlled(GW_RV_DAMP) ? paramTftCvValue[GW_RV_DAMP] : paramTftValue[GW_RV_DAMP], "DAMP");
+        RenderParam(160, 35, IsCvControlled(GW_RV_HPF) ? paramTftCvValue[GW_RV_HPF] : paramTftValue[GW_RV_HPF], "HPF");
+        
+        tft.WriteString("LFO1",20,80,Font_7x10,COLOR_WHITE);
+        RenderParamChar(20, 95, IsCvControlled(GW_LFO_WAVE) ? paramTftCvValue[GW_LFO_WAVE] : paramTftValue[GW_LFO_WAVE], "WAVE",LFO_WAVE);
+        RenderParam(90, 95, IsCvControlled(GW_LFO_SPEED) ? paramTftCvValue[GW_LFO_SPEED] : paramTftValue[GW_LFO_SPEED], "SPEED");
+        //RenderParam(160, 95, paramTftValue[GW_LFO_AMP], "AMP");
+        RenderParamChar(160, 95, IsCvControlled(GW_LFO_RANGE) ? paramTftCvValue[GW_LFO_RANGE] : paramTftValue[GW_LFO_RANGE], "RANGE",LFO_RANGE);
+
+        tft.WriteString("LFO2",20,140,Font_7x10,COLOR_WHITE);
+        RenderParamChar(20, 155, paramTftValue[GW_LFO2_WAVE], "WAVE",LFO_WAVE);
+        RenderParam(90, 155, paramTftValue[GW_LFO2_SPEED], "SPEED");
+        //RenderParam(160, 95, paramTftValue[GW_LFO_AMP], "AMP");
+        RenderParamChar(160, 155, paramTftValue[GW_LFO2_RANGE], "RANGE",LFO_RANGE);
+        
+        RenderPotParam(20,213,paramTftPotValue[0],"PITCH");
+        RenderPotParam(90,213,paramTftPotValue[1],"LENGTH");
+        RenderPotParam(160,213,paramTftPotValue[2],"POSITION");
+        RenderPotParam(230,213,paramTftPotValue[3],"DENSITY");
+        RenderRotaryKnob_(50, 0, 100, 7, 225, 7);
+        
+        RenderAreaIndicator();
+    }
+}
+void RenderTab3()
+{
+    if(tab_ == 2) {
+        RenderTabRect(tab_);
+        tft.WriteString("WINDOW",20,20,Font_7x10,COLOR_WHITE);
+        RenderWindow(20,35,paramTftValue[GW_WINDOW]);
+
+        //tft.WriteString("LFO2:",15,190,Font_7x10,COLOR_GRAY);
+        //tft.WriteString(GetIntAsString_(static_cast<int>(lfo_val[1] * 100.f)),90,190,Font_11x18,COLOR_WHITE);
+
+        RenderAreaIndicator();
+
+        tft.WriteString("CPU-AVG:",15,220,Font_7x10,COLOR_GRAY);
+        tft.WriteString(GetIntAsString_(static_cast<int>(avg_cpu_*100.0)),70,220,Font_11x18,COLOR_GRAY);
+        tft.WriteString("CPU-MIN:",115,220,Font_7x10,COLOR_GRAY);
+        tft.WriteString(GetIntAsString_(static_cast<int>(min_cpu_*100.0)),170,220,Font_11x18,COLOR_GRAY);
+        tft.WriteString("CPU-MAX:",215,220,Font_7x10,COLOR_GRAY);
+        tft.WriteString(GetIntAsString_(static_cast<int>(max_cpu_*100.0)),270,220,Font_11x18,COLOR_GRAY);
+
+        
+    }
+}
+void RenderTab4()
+{
+    if(tab_ == 3) {
+        RenderTabRect(tab_);
+
+        RenderWavSelector(15, 30,paramWavVal);
+        RenderCvSelector(15, 74,0);
+        RenderCvSelector(170, 74,1);
+        RenderCvSelector(15, 124,2);
+        RenderCvSelector(170, 124,3);
+        RenderLfoSelector(15, 174,0);
+        RenderLfoSelector(170, 174,1);
+        
+        RenderAreaIndicator();
+        
+    }
+}
+void RenderSave()
+{
+    tft.WriteStringAligned("SAVE PRESET?",Font_11x18,Rectangle(0,80,320,34),Alignment::centered,COLOR_WHITE);
+    //tft.WriteStringAligned("YES (FUNC) --- NO (SHIFT)",Font_11x18,Rectangle(0,70,320,34),Alignment::centered,COLOR_YELLOW);
+    
+    tft.FillRect(Rectangle(0, 213, 75, 26), COLOR_BLUE);
+    tft.FillRect(Rectangle(245, 213, 75, 26), COLOR_RED);
+
+    tft.WriteStringAligned("YES",Font_7x10,Rectangle(0, 213, 75, 26),Alignment::centered,COLOR_WHITE);
+    tft.WriteStringAligned("NO",Font_7x10,Rectangle(245, 213, 75, 26),Alignment::centered,COLOR_WHITE);
+}
+
+void RenderRestore()
+{
+    tft.WriteStringAligned("RESTORE PRESET?",Font_11x18,Rectangle(0,80,320,34),Alignment::centered,COLOR_WHITE);
+    //tft.WriteStringAligned("YES (FUNC) --- NO (SHIFT)",Font_11x18,Rectangle(0,70,320,34),Alignment::centered,COLOR_YELLOW);
+    
+    tft.FillRect(Rectangle(0, 213, 75, 26), COLOR_BLUE);
+    tft.FillRect(Rectangle(245, 213, 75, 26), COLOR_RED);
+
+    tft.WriteStringAligned("YES",Font_7x10,Rectangle(0, 213, 75, 26),Alignment::centered,COLOR_WHITE);
+    tft.WriteStringAligned("NO",Font_7x10,Rectangle(245, 213, 75, 26),Alignment::centered,COLOR_WHITE);
+}
+
+void RenderCvSelector(int x, int y,int idx)
+{
+    int cvattPos = map_(cvAttValue_[idx],0,100,3,144);
+    
+    tft.DrawRect(x,y,145,34,COLOR_WHITE);
+    tft.FillRect(Rectangle(x+1, y+1, 50, 33), COLOR_GRAY);
+    tft.DrawLine(x+50,y,x+50,y+34,COLOR_WHITE);
+    tft.WriteStringAligned(cv_labels[idx],Font_11x18,Rectangle(x+10,y+1,30,34),Alignment::centered,COLOR_WHITE);
+    tft.WriteStringAligned(cv_selector[cvSelValue_[idx]],Font_11x18,Rectangle(x+58,y+1,80,34),Alignment::centered,COLOR_YELLOW);
+    tft.DrawRect(x,y+34,145,7,COLOR_WHITE);
+    tft.FillRect(Rectangle(x+1, y+35, cvattPos, 6), COLOR_WHITE);
+}
+void RenderWavSelector(int x, int y,int idx)
+{
+    tft.DrawRect(x,y,300,34,COLOR_WHITE);
+    tft.FillRect(Rectangle(x+1, y+1, 50, 33), COLOR_GRAY);
+    tft.DrawLine(x+50,y,x+50,y+34,COLOR_WHITE);
+    tft.WriteStringAligned("WAV",Font_11x18,Rectangle(x+10,y+1,30,34),Alignment::centered,COLOR_WHITE);
+    if(idx < 0) {
+        tft.WriteStringAligned("---",Font_11x18,Rectangle(x+50,y+1,240,34),Alignment::centeredRight,COLOR_YELLOW);
+    } else {
+        tft.WriteStringAligned(filenames[idx].c_str(),Font_11x18,Rectangle(x+50,y+1,240,34),Alignment::centeredRight,COLOR_YELLOW);
+    }
+}
+void RenderLfoSelector(int x, int y,int idx)
+{
+    int lfoattPos = map_(lfoAttValue_[idx],0,100,3,144);    
+    
+    tft.DrawRect(x,y,145,34,COLOR_WHITE);
+    tft.FillRect(Rectangle(x+1, y+1, 50, 33), COLOR_GRAY);
+    tft.DrawLine(x+50,y,x+50,y+34,COLOR_WHITE);
+    tft.WriteStringAligned(lfo_labels[idx],Font_11x18,Rectangle(x+10,y+1,30,34),Alignment::centered,COLOR_WHITE);
+    tft.WriteStringAligned(cv_selector[lfoSelValue_[idx]],Font_11x18,Rectangle(x+58,y+1,80,34),Alignment::centered,COLOR_YELLOW);
+    tft.DrawRect(x,y+34,145,7,COLOR_WHITE);
+    tft.FillRect(Rectangle(x+1, y+35, lfoattPos, 6), COLOR_WHITE);
+}
+
+float getRndOct(float potvalue) {
+    if(potvalue < 0.05) {
+        return 0;
+    } else if(potvalue >= 0.05 && potvalue < 0.25) {
+        float oct[2] = {0,1};
+        return oct[rand() % 1];
+    } else if(potvalue >= 0.25 && potvalue < 0.5) {
+        float oct[3] = {0,1,-1};
+        return oct[rand() % 2];
+    } else if(potvalue >= 0.5 && potvalue < 0.75) {
+        float oct[3] = {0,1,2};
+        return oct[rand() % 2];
+    } else if(potvalue >= 0.75) {
+        float oct[5] = {0,1,-1,2,-2};
+        return oct[rand() % 4];
+    } else {
+        return 0;
+    }
+} 
+
+void clearMem() {
+    // Clear the buffers
+    memset(renderable_recording, 0, sizeof(renderable_recording));
+    memset(recording, 0, sizeof(recording));
+}
+
+void ReadSwitches()
+{
+    hw.ProcessDigitalControls(encScale_);
+    for (int i = 0; i < 4; ++i) {
+        buttons[i].Debounce();
+    }
+
+    switch (mode_) {
+      case UI_MODE_START:
+        
+        if(hw.SwitchRisingEdge(hw.S_TOP1)) {
+            tab_ = 0;
+        }
+        if(hw.SwitchRisingEdge(hw.S_TOP2)) {
+            tab_ = 1;
+        }
+        if(hw.SwitchRisingEdge(hw.S_TOP3)) {
+            tab_ = 2;
+        }
+        if(hw.SwitchRisingEdge(hw.S_TOP4)) {
+            tab_ = 3;
+        }
+        
+
+        //if(hw.SwitchFallingEdge(hw.S_PAGE_UP)) {
+        if(buttons[SRBUTTON_UP].RisingEdge()) {
+            switch (tab_)
+            {
+            case 0:
+                area_[tab_] -= 1;
+                if(area_[tab_] < 0) {
+                    area_[tab_] = 2;
+                }
+                break;
+            case 1:
+                area_[tab_] -= 1;
+                if(area_[tab_] < 0) {
+                    area_[tab_] = 2;
+                }
+                break;
+            case 2:
+            break;
+            case 3:
+                area_[tab_] -= 1;
+                if(area_[tab_] < 0) {
+                    area_[tab_] = 3;
+                }
+                break;
+            default:
+                break;
+            }
+            
+        }
+        //if(hw.SwitchFallingEdge(hw.S_PAGE_DOWN)) {
+        if(buttons[SRBUTTON_DOWN].RisingEdge()) {
+            switch (tab_)
+            {
+            case 0:
+                area_[tab_] += 1;
+                if(area_[tab_] > 2) {
+                    area_[tab_] = 0;
+                }
+                break;
+            case 1:
+                area_[tab_] += 1;
+                if(area_[tab_] > 2) {
+                    area_[tab_] = 0;
+                }
+                break;
+            case 3:
+                area_[tab_] += 1;
+                if(area_[tab_] > 3) {
+                    area_[tab_] = 0;
+                }
+                break;
+            default:
+                break;
+            }
+        }
+
+        for (size_t i = 0; i < 4; i++)
+        {
+            switch (tab_)
+            {
+            case 0:
+                if(area_[tab_] == 0) {
+                    paramTftValue[i+5] += hw.enc[i].Increment();
+                    paramTftValue[i+5] = clamp_int(paramTftValue[i+5],0,100);                    
+                } else if(area_[tab_] == 1 && i < 3) {
+                    paramTftValue[i+9] += hw.enc[i].Increment();
+                    paramTftValue[i+9] = clamp_int(paramTftValue[i+9],0,100);
+                } else if(area_[tab_] == 2 && i < 2) {
+                    paramTftValue[i+GW_IN_LVL] += hw.enc[i].Increment();
+                    paramTftValue[i+GW_IN_LVL] = clamp_int(paramTftValue[i+GW_IN_LVL],0,100);
+                }
+                break;
+            case 1:
+                if(area_[tab_] == 0 && i < 3) {
+                    paramTftValue[i+GW_RV_TIME] += hw.enc[i].Increment();
+                    paramTftValue[i+GW_RV_TIME] = clamp_int(paramTftValue[i+GW_RV_TIME],0,100);
+                }
+                if(area_[tab_] == 1 && i < 3) {
+                    paramTftValue[i+GW_LFO_WAVE] += hw.enc[i].Increment();
+                    if(i == 0) {
+                        paramTftValue[GW_LFO_WAVE] = clamp_int(paramTftValue[GW_LFO_WAVE],0,9);
+                    } else if(i == 2) {
+                        paramTftValue[GW_LFO_RANGE] = clamp_int(paramTftValue[GW_LFO_RANGE],0,2);
+                    } else {
+                        paramTftValue[i+GW_LFO_WAVE] = clamp_int(paramTftValue[i+GW_LFO_WAVE],0,100);
+                    }
+                    
+                }
+                if(area_[tab_] == 2 && i < 3) {
+                    paramTftValue[i+GW_LFO2_WAVE] += hw.enc[i].Increment();
+                    if(i == 0) {
+                        paramTftValue[GW_LFO2_WAVE] = clamp_int(paramTftValue[GW_LFO2_WAVE],0,9);
+                    } else if(i == 2) {
+                        paramTftValue[GW_LFO2_RANGE] = clamp_int(paramTftValue[GW_LFO2_RANGE],0,2);
+                    } else {
+                        paramTftValue[i+GW_LFO2_WAVE] = clamp_int(paramTftValue[i+GW_LFO2_WAVE],0,100);
+                    }
+                    
+                }
+                break;
+            case 2:
+                if(area_[tab_] == 0 && i == 0) {
+                    paramTftValue[GW_WINDOW] += hw.enc[i].Increment();
+                    paramTftValue[GW_WINDOW] = clamp_int(paramTftValue[GW_WINDOW],0,100);
+                }
+                
+                break;
+            case 3:
+                if(area_[tab_] == 0) {
+                    if(i == 0) {
+                        paramWavVal += hw.enc[i].Increment();
+                        paramWavVal = clamp_int(paramWavVal,-1,filenames.size()-1);
+                        if(hw.SwitchRisingEdge(hw.S_ENC1) && paramWavVal > -1) {
+                            loadSample = true;
+                            //err_msg = "Button clicked";
+                            tab_ = 0;
+                        }
+                        if(hw.SwitchRisingEdge(hw.S_ENC1) && paramWavVal == -1) {
+                            clearMem();
+                            //err_msg = "Param Val -1";
+                        }
+                    }
+                }
+                else if(area_[tab_] == 1) {
+                    if(i == 0) {
+                        cvSelValue_[i] += hw.enc[i].Increment();
+                        cvSelValue_[i] = clamp_int(cvSelValue_[i],0,kNumCvParams-1);
+                    } else if(i == 2){
+                        cvSelValue_[i-1] += hw.enc[i].Increment();
+                        cvSelValue_[i-1] = clamp_int(cvSelValue_[i-1],0,kNumCvParams-1);
+                    } else if(i == 1) {
+                        cvAttValue_[i-1] += hw.enc[i].Increment();
+                        cvAttValue_[i-1] = clamp_int(cvAttValue_[i-1],0,100);
+                    } else {
+                        cvAttValue_[i-2] += hw.enc[i].Increment();
+                        cvAttValue_[i-2] = clamp_int(cvAttValue_[i-2],0,100);
+                    }
+                    
+                }
+                else if(area_[tab_] == 2) {
+                    if(i == 0) {
+                        cvSelValue_[i+2] += hw.enc[i].Increment();
+                        cvSelValue_[i+2] = clamp_int(cvSelValue_[i+2],0,kNumCvParams-1);
+                    } else if(i == 2){
+                        cvSelValue_[i+1] += hw.enc[i].Increment();
+                        cvSelValue_[i+1] = clamp_int(cvSelValue_[i+1],0,kNumCvParams-1);
+                    } else if(i == 1) {
+                        cvAttValue_[i+1] += hw.enc[i].Increment();
+                        cvAttValue_[i+1] = clamp_int(cvAttValue_[i+1],0,100);
+                    } else {
+                        cvAttValue_[i] += hw.enc[i].Increment();
+                        cvAttValue_[i] = clamp_int(cvAttValue_[i],0,100);
+                    }
+                }
+                else if(area_[tab_] == 3) {
+                    if(i == 0) {
+                        lfoSelValue_[i] += hw.enc[i].Increment();
+                        lfoSelValue_[i] = clamp_int(lfoSelValue_[i],0,kNumCvParams-1);
+                    }  else if(i == 1) {
+                        lfoAttValue_[i-1] += hw.enc[i].Increment();
+                        lfoAttValue_[i-1] = clamp_int(lfoAttValue_[i-1],0,100);
+                        paramTftValue[GW_LFO_AMP] = lfoAttValue_[i-1];
+                    } else if(i == 2) {
+                        lfoSelValue_[i-1] += hw.enc[i].Increment();
+                        lfoSelValue_[i-1] = clamp_int(lfoSelValue_[i-1],0,kNumCvParams-1);
+                    }  else if(i == 3) {
+                        lfoAttValue_[i-2] += hw.enc[i].Increment();
+                        lfoAttValue_[i-2] = clamp_int(lfoAttValue_[i-2],0,100);
+                        paramTftValue[GW_LFO2_AMP] = lfoAttValue_[i-2];
+                    }                    
+                }
+            break;
+            default:
+                break;
+            }
+        }
+
+        // Record button/gate
+    if(hw.SwitchRisingEdge(hw.S_REC))
+    {
+        //record_led.Write(!is_recording);
+        //hw.SetLed(!is_recording);
+        //hw.UpdateLed();
+
+        if (!is_recording) {
+            is_recording = true;
+            recording_xfade_step = 0;
+        } else {
+            //is_recording = false;
+            is_stopping_recording = true;
+        }
+    }
+
+    //if(hw.SwitchRisingEdge(hw.S_FUNC)) {
+    //        mode_ = UI_MODE_SAVE;
+    //    }
+    if(buttons[SRBUTTON_FUNC].Pressed() && buttons[SRBUTTON_SHIFT].Pressed()) {
+        mode_ = UI_MODE_SAVE;
+    }
+    if(buttons[SRBUTTON_FUNC].isPressedLong()) {
+            mode_ = UI_MODE_CALIBRATION;
+        }
+     if(buttons[SRBUTTON_SHIFT].isPressedLong()) {
+            mode_ = UI_MODE_RESTORE_STATE;
+        }
+        
+
+    break;
+    case UI_MODE_SAVE:
+        if(hw.SwitchRisingEdge(hw.S_ENC1) && !readyToSavePreset) {
+            readyToSavePreset = true;
+            mode_ = UI_MODE_START;
+        }
+        if(hw.SwitchRisingEdge(hw.S_ENC4)) {
+            mode_ = UI_MODE_START;
+        }
+    break;
+    case UI_MODE_RESTORE_STATE:
+        if(hw.SwitchRisingEdge(hw.S_ENC1) && !readyToRestorePreset) {
+            readyToRestorePreset = true;
+            mode_ = UI_MODE_START;
+        }
+        if(hw.SwitchRisingEdge(hw.S_ENC4)) {
+            mode_ = UI_MODE_START;
+        }
+    break;
+    case UI_MODE_CALIBRATION:
+        if(hw.SwitchRisingEdge(hw.S_ENC4)) {
+            mode_ = UI_MODE_START;
+        }
+        if(hw.SwitchRisingEdge(hw.S_ENC1) && !readyToSaveCalibration) {
+            readyToSaveCalibration = true;
+        }
+    break;
+    }
+}
+
+void loadSampleToBuffer(const char* fn,const char* path) {
+    UINT bytes_read;
+    uint32_t numSamples;
+    FRESULT fr;
+    char path_buf[128];
+    fr = f_opendir(&dir, path);
+    if (fr != FR_OK) {
+        // Handle error (e.g., print to serial)
+        err_msg = "Could not open dir";
+        return;
+    }
+    err_msg = fn;
+    strcpy(path_buf, path);
+    strcat(path_buf, "/");
+    strcat(path_buf, fn);
+
+    if (f_open(&file, path_buf, (FA_OPEN_EXISTING | FA_READ)) == FR_OK) {
+        //fsi_loaded = true;
+        err_msg = "Opened file";
+        FRESULT fr = f_read(&file, &wavHeader, sizeof(wavHeader), &bytes_read);
+        if ((fr == FR_OK) && (wavHeader.NbrChannels == 1)) {
+            clearMem();
+            write_head = 0;
+            switch (wavHeader.BitPerSample) {
+
+                case 16:
+                    numSamples = wavHeader.SubCHunk2Size / 2;
+                    if (numSamples > RECORDING_BUFFER_SIZE)
+                        numSamples = RECORDING_BUFFER_SIZE;                           
+                    
+                    fr = f_read(&file, convertBuffer, (numSamples * 2), &bytes_read);
+                    for (uint32_t i = 0; i < numSamples; i++) {
+                        record_sample(s162f(convertBuffer[i]));
+                        record_sample_for_display(s162f(convertBuffer[i]));
+                        increment_write_head();
+                    }
+                    err_msg = "Success";
+                break;
+
+                case 32:
+                    numSamples = wavHeader.SubCHunk2Size / 4;
+                    if (numSamples > RECORDING_BUFFER_SIZE)
+                        numSamples = RECORDING_BUFFER_SIZE;                           
+                   
+                    ////fr = f_read(&file, &sampleBuff[s][0], (numSamples * 4), &bytes_read);
+                break;
+
+                default:
+                break;
+            }
+        }
+        f_close(&file);
+    } else {
+        err_msg = "File not opened";
+    }
+}
+
+float clamp(float x, float a, float b)
+{
+    return std::max(a,std::min(b,x));
+}
+
+
+float GetCvLfoValue(int param_idx) {
+	float tmp_cv[4] = {0,0,0,0};
+    float tmp_lfo[2] = {0,0};
+	for (int i = 0; i < 4; i++)
+	{       
+        if(param_idx == cvSelValue_[i] && param_idx != 0 && cvAttValue_[i] > 0) {
+			tmp_cv[i] = (hw.GetCvValue(i) - cvOffsetValues_[i]) * (cvAttValue_[i] / 100.0);
+		}
+	}
+    for (int i = 0; i < 2; i++) 
+    {
+        if(param_idx == lfoSelValue_[i] && param_idx != 0) {
+			tmp_lfo[i] = lfo_val[i];
+		}
+    }
+    //debugVal = static_cast<int>(tmp_cv[0]*100.0);
+	return clamp((tmp_cv[0] + tmp_cv[1] + tmp_cv[2] + tmp_cv[3] + tmp_lfo[0] + tmp_lfo[1]), -1.0, 1.0);	
+}
+
+void SetTftParamValue(int param_idx, float param_value) {
+    //debugVal = param_idx;
+    paramTftCvValue[param_idx] = clamp_int(static_cast<int>(param_value*100.f),0,100);
+    //debugVal = paramTftCvValue[param_idx];
+}
+
+bool IsCvControlled(int param_idx) {
+    for (int i = 0; i < 4; i++)
+	{
+		if(param_idx == cvSelValue_[i] && param_idx != 0) {
+			return true;
+		}
+	}
+    for (int i = 0; i < 2; i++)
+    {
+        if(param_idx == lfoSelValue_[i] && param_idx != 0) {
+			return true;
+		}
+    }
+	return false;	
+}
+
+bool IsOct(int octval) {
+    switch (octval)
+    {
+    case 0:
+    case 99:
+    case 100:
+    case 101:
+    case 199:
+    case 200:
+    case 201:
+    case -99:
+    case -100:
+    case -101:
+    case -199:
+    case -200:
+    case -201:
+        return true;
+        break;
+    
+    default:
+        return false;
+        break;
+    }
+}
+
+void RenderRotaryKnob_(int val, int minValue, int maxValue, int centerX, int centerY, int radius) {
+      
+    // Draw the outer circle of the slider
+    tft.DrawCircle(centerX, centerY, radius, COLOR_WHITE);
+    
+    
+    // Map the encoder value to an angle (0 to 360 degrees)
+    float angle = map_(val, minValue, maxValue, 135, 405);
+    // Convert angle to radians for trigonometric functions
+    float radians =   angle * (PI_F / 180);
+    float radiansLine0 =   135 * (PI_F / 180);
+    float radiansLine1 =   270 * (PI_F / 180);
+    float radiansLine2 =   405 * (PI_F / 180);
+    
+    int line0AX = centerX + (radius - 0) * cos(radians);
+    int line0AY = centerY + (radius - 0) * sin(radians);
+
+    int line0BX = centerX + (radius - 5) * cos(radians);
+    int line0BY = centerY + (radius - 5) * sin(radians);
+
+    tft.DrawLine(line0AX,line0AY,line0BX,line0BY,COLOR_WHITE);
+   
+}
+
+void LoadPreset()
+{
+    const the_settings &psettings = preset.thesettings();
+    paramTftValue[GW_COUNT] = psettings.gw_count;
+    paramTftValue[GW_SPLAY] = psettings.gw_splay;
+    paramTftValue[GW_JITTER] = psettings.gw_jitter;
+    paramTftValue[GW_REVERB] = psettings.gw_reverb;
+    paramTftValue[GW_RND_PAN] = psettings.gw_rnd_pan;
+    paramTftValue[GW_RND_OCT] = psettings.gw_rnd_oct;
+    paramTftValue[GW_IN_LVL] = psettings.gw_in_lvl;
+    paramTftValue[GW_OUT_LVL] = psettings.gw_out_lvl;
+    paramTftValue[GW_RV_TIME] = psettings.gw_reverb_time;
+    paramTftValue[GW_RV_DAMP] = psettings.gw_reverb_damp;
+    paramTftValue[GW_RV_HPF] = psettings.gw_reverb_hpf;
+    paramTftValue[GW_LFO_WAVE] = psettings.gw_lfo1_wave;
+    paramTftValue[GW_LFO_SPEED] = psettings.gw_lfo1_speed;
+    paramTftValue[GW_LFO_RANGE] = psettings.gw_lfo1_range;
+    paramTftValue[GW_LFO2_WAVE] = psettings.gw_lfo2_wave;
+    paramTftValue[GW_LFO2_SPEED] = psettings.gw_lfo2_speed;
+    paramTftValue[GW_LFO2_RANGE] = psettings.gw_lfo2_range;
+    paramTftValue[GW_WINDOW] = psettings.gw_window;
+    paramTftValue[GW_SCAN_POSITION] = psettings.gw_scan_pos;
+    
+}
+
+void SavePreset()
+{
+    the_settings *psettings = preset.mutable_thesettings();
+
+    psettings->gw_count = paramTftValue[GW_COUNT];
+    psettings->gw_splay = paramTftValue[GW_SPLAY];
+    psettings->gw_jitter = paramTftValue[GW_JITTER];
+    psettings->gw_reverb = paramTftValue[GW_REVERB];
+    psettings->gw_rnd_pan = paramTftValue[GW_RND_PAN];
+    psettings->gw_rnd_oct = paramTftValue[GW_RND_OCT];
+    psettings->gw_in_lvl = paramTftValue[GW_IN_LVL];
+    psettings->gw_out_lvl = paramTftValue[GW_OUT_LVL];
+    psettings->gw_reverb_time = paramTftValue[GW_RV_TIME];
+    psettings->gw_reverb_damp = paramTftValue[GW_RV_DAMP];
+    psettings->gw_reverb_hpf = paramTftValue[GW_RV_HPF];
+    psettings->gw_lfo1_wave = paramTftValue[GW_LFO_WAVE];
+    psettings->gw_lfo1_speed = paramTftValue[GW_LFO_SPEED];
+    psettings->gw_lfo1_range = paramTftValue[GW_LFO_RANGE];
+    psettings->gw_lfo2_wave = paramTftValue[GW_LFO2_WAVE];
+    psettings->gw_lfo2_speed = paramTftValue[GW_LFO2_SPEED];
+    psettings->gw_lfo2_range = paramTftValue[GW_LFO2_RANGE];
+    psettings->gw_window = paramTftValue[GW_WINDOW];
+    psettings->gw_scan_pos = paramTftValue[GW_SCAN_POSITION];
+    preset.SaveTheSettings();
+}
+
+void RenderTab1Row1() {
+    if(area_[tab_] < 2) {
+        RenderParam(20, row1YT1, IsCvControlled(GW_COUNT) ? paramTftCvValue[GW_COUNT] : paramTftValue[GW_COUNT], "COUNT");
+        RenderParam(90, row1YT1, IsCvControlled(GW_SPLAY) ? paramTftCvValue[GW_SPLAY] : paramTftValue[GW_SPLAY], "SPLAY");
+        RenderParam(160, row1YT1, IsCvControlled(GW_JITTER) ? paramTftCvValue[GW_JITTER] : paramTftValue[GW_JITTER], "JITTER");
+        //RenderParam(230, row1YT1, IsCvControlled(GW_REVERB) ? paramTftCvValue[GW_REVERB] : paramTftValue[GW_REVERB], "REVERB");
+        RenderParam(230, row1YT1, IsCvControlled(GW_SCAN_POSITION) ? paramTftCvValue[GW_SCAN_POSITION] : paramTftValue[GW_SCAN_POSITION], "SCAN");
+
+        tft.FillRect(Rectangle(0, row1YT1, 6, 38), area_[tab_] == 0 ? COLOR_YELLOW : COLOR_GRAY);
+    }
+}
+
+void RenderTab1Row2() {
+    if(area_[tab_] < 2) {
+        RenderParam(20, row2YT1, IsCvControlled(GW_RND_PAN) ? paramTftCvValue[GW_RND_PAN] : paramTftValue[GW_RND_PAN], "RND PAN");
+        RenderParam(90, row2YT1, IsCvControlled(GW_RND_OCT) ? paramTftCvValue[GW_RND_OCT] : paramTftValue[GW_RND_OCT], "RND OCT");
+        RenderParam(160, row2YT1, IsCvControlled(GW_REVERB) ? paramTftCvValue[GW_REVERB] : paramTftValue[GW_REVERB], "REVERB");
+        //RenderParam(160, row2YT1, paramTftValue[GW_IN_LVL], "IN LVL");
+        //RenderParam(230, row2YT1, paramTftValue[GW_OUT_LVL], "OUT LVL");
+
+        tft.FillRect(Rectangle(0, row2YT1, 6, 38), area_[tab_] == 1 ? COLOR_YELLOW : COLOR_GRAY);
+    }
+}
+
+void RenderTab1Row3() {
+    if(area_[tab_] > 1) {
+        //RenderParam(20, row3YT1, IsCvControlled(GW_SCAN_POSITION) ? paramTftCvValue[GW_SCAN_POSITION] : paramTftValue[GW_SCAN_POSITION], "SCAN");
+        RenderParam(20, row3YT1, paramTftValue[GW_IN_LVL], "IN LVL");
+        RenderParam(90, row3YT1, paramTftValue[GW_OUT_LVL], "OUT LVL");
+        tft.FillRect(Rectangle(0, row3YT1, 6, 38), area_[tab_] == 2 ? COLOR_YELLOW : COLOR_GRAY);
+    }
+}
+
+void RowTab1Y() {
+    switch (area_[tab_])
+    {
+    case 0:
+    case 1:
+        row1YT1 = 145;
+        row2YT1 = 190;
+        break;
+    case 2:
+        row3YT1 = 145;
+        break;
+    default:
+        break;
+    }
+}
+
+void RenderAreaArrow() {
+    switch (area_[tab_])
+    {
+    case 0:
+     case 1: 
+        tft.DrawLine(0,235,5,235,COLOR_YELLOW);
+        tft.DrawLine(1,236,4,236,COLOR_YELLOW);
+        tft.DrawLine(2,237,3,237,COLOR_YELLOW);
+        break;
+     case 2: 
+        tft.DrawLine(0,138,5,138,COLOR_YELLOW);
+        tft.DrawLine(1,137,4,137,COLOR_YELLOW);
+        tft.DrawLine(2,136,3,136,COLOR_YELLOW);
+        break;
+    default:
+        break;
+    }
+}
+
+void RenderSplash() {
+    tft.WriteStringAligned("WYATT",Font_16x26,Rectangle(0,30,320,34),Alignment::centered,COLOR_YELLOW);
+    tft.WriteStringAligned("maasijam",Font_11x18,Rectangle(0,70,320,34),Alignment::centered,COLOR_YELLOW);
+}
+void LoadCalibration(){
+    const the_calibration &cvcal = preset.thecalibration();
+    
+    for (size_t i = 0; i < 4; i++)
+    {
+            cvOffsetValues_[i] = cvcal.cvOffset[i];   
+    }
+}
+void SaveCalibration(){
+        const the_calibration &storedcvcal = preset.thecalibration();
+        float temp_stored_cv[4];
+        calibrationLoader = 0;
+        for (size_t i = 0; i < 4; i++)
+        {
+            temp_stored_cv[i] = storedcvcal.cvOffset[i];
+        }
+         
+        // perform calibration routine
+        int numSamples = 128;
+        for(int i = 0; i < numSamples; i++) {
+            // accumulate cv values
+            for (size_t j = 0; j < 4; j++)
+            {
+                temp_stored_cv[j] += hw.GetCvValue(j);
+            }
+            calibrationLoader++;
+            // wait 10ms
+            int calloader = map_(calibrationLoader,0,127,3,300);
+            if(tft.IsRender())
+            {
+                tft.FillRect(Rectangle(0, 0, calloader, 6), COLOR_YELLOW);
+                tft.Update();
+            }
+            System::Delay(100);
+            
+        }
+        for (size_t i = 0; i < 4; i++)
+        {
+            
+            temp_stored_cv[i] = temp_stored_cv[i] / ((float)numSamples);
+        }
+               
+
+        the_calibration *calsettings = preset.mutable_thecalibration();
+        calsettings->calibrated = true;
+        for (size_t i = 0; i < 4; i++)
+        {
+            calsettings->cvOffset[i] = temp_stored_cv[i];
+            cvOffsetValues_[i] = temp_stored_cv[i];
+        }
+        preset.SaveCalibration();
+        
+}
+
+void RenderCalibration() {
+    tft.WriteStringAligned("Calibration?",Font_11x18,Rectangle(0,30,320,20),Alignment::centered,COLOR_WHITE);
+    
+    if(calibrationLoader > 0) {
+        tft.WriteStringAligned("The calibration was successful.",Font_7x10,Rectangle(0,80,320,20),Alignment::centered,COLOR_WHITE);
+    } else {
+        tft.WriteStringAligned("(Only necessary if the values of CV1-CV4",Font_7x10,Rectangle(0,60,320,20),Alignment::centered,COLOR_WHITE);
+        tft.WriteStringAligned("are not equal to 0)",Font_7x10,Rectangle(0,80,320,20),Alignment::centered,COLOR_WHITE);
+    }
+    int tmpcv[4];
+    tmpcv[0] = (hw.GetCvValue(hw.CV_0) - cvOffsetValues_[hw.CV_0]) * 1000;
+    tmpcv[1] = (hw.GetCvValue(hw.CV_1) - cvOffsetValues_[hw.CV_1]) * 1000;
+    tmpcv[2] = (hw.GetCvValue(hw.CV_2) - cvOffsetValues_[hw.CV_2]) * 1000;
+    tmpcv[3] = (hw.GetCvValue(hw.CV_3) - cvOffsetValues_[hw.CV_3]) * 1000;
+
+    tft.WriteString("CV1:",5,130,Font_11x18,COLOR_WHITE);
+    tft.WriteString(GetIntAsString_(static_cast<int>(tmpcv[0])),80,130,Font_11x18,COLOR_YELLOW);
+    tft.WriteString("CV2:",170,130,Font_11x18,COLOR_WHITE);
+    tft.WriteString(GetIntAsString_(static_cast<int>(tmpcv[1])),250,130,Font_11x18,COLOR_YELLOW);
+    tft.WriteString("CV3:",5,155,Font_11x18,COLOR_WHITE);
+    tft.WriteString(GetIntAsString_(static_cast<int>(tmpcv[2])),80,155,Font_11x18,COLOR_YELLOW);
+    tft.WriteString("CV4:",170,155,Font_11x18,COLOR_WHITE);
+    tft.WriteString(GetIntAsString_(static_cast<int>(tmpcv[3])),250,155,Font_11x18,COLOR_YELLOW);
+    if(calibrationLoader == 0) {
+        tft.FillRect(Rectangle(0, 213, 75, 26), COLOR_BLUE);
+    }
+    tft.FillRect(Rectangle(245, 213, 75, 26), COLOR_RED);
+
+    if(calibrationLoader == 0) {
+        tft.WriteStringAligned("YES",Font_7x10,Rectangle(0, 213, 75, 26),Alignment::centered,COLOR_WHITE);
+        tft.WriteStringAligned("NO",Font_7x10,Rectangle(245, 213, 75, 26),Alignment::centered,COLOR_WHITE);
+    } else {
+        tft.WriteStringAligned("CLOSE",Font_7x10,Rectangle(245, 213, 75, 26),Alignment::centered,COLOR_WHITE);
+    }
+    
+}
+
+float GetLfoFreq(int range, float speed) {
+    float lfofreq;
+    switch (range)
+    {
+    case 0:
+        lfofreq = map_to_range(speed,1.f,100.f);
+        break;
+    case 1:
+        lfofreq = map_to_range(speed,100.f,200.f);
+        break;
+    case 2:
+        lfofreq = map_to_range(speed,200.f,400.f);
+        break;
+    default:
+        lfofreq = map_to_range(speed,1.f,100.f);
+        break;
+    }
+    return lfofreq;
+}
