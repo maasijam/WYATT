@@ -1,6 +1,6 @@
 # WYATT - A Daisy Seed based Eurorack module
 
-> [!DISCLAIMER]
+> [!NOTE]
 > This is a DIY project. Use at your own risk.
 
 ## Features
