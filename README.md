@@ -1,1 +1,5 @@
 <h1>WYATT - A Daisy Seed based Eurorack module</h1>
+
+> [!NOTE]
+> For the TFT display to work correctly, you need to change the following line in libDaisy:
+> https://github.com/electro-smith/libDaisy/blob/master/src/sys/system.cpp#L528 to MPU_InitStruct.Size = MPU_REGION_SIZE_256KB;
