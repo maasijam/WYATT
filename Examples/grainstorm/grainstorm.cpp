@@ -16,6 +16,8 @@ using namespace wyatt;
 using namespace std;
 using namespace settings;
 
+const char* version = "v 0.1";
+
 
 enum UiMode {
   UI_MODE_START,
@@ -1412,8 +1414,8 @@ void ReadSwitches()
         }
         
 
-        //if(hw.SwitchFallingEdge(hw.S_PAGE_UP)) {
-        if(buttons[SRBUTTON_UP].RisingEdge()) {
+        if(hw.SwitchRisingEdge(hw.S_PAGE_UP)) {
+        //if(buttons[SRBUTTON_UP].RisingEdge()) {
             switch (tab_)
             {
             case 0:
@@ -1441,8 +1443,8 @@ void ReadSwitches()
             }
             
         }
-        //if(hw.SwitchFallingEdge(hw.S_PAGE_DOWN)) {
-        if(buttons[SRBUTTON_DOWN].RisingEdge()) {
+        if(hw.SwitchRisingEdge(hw.S_PAGE_DOWN)) {
+        //if(buttons[SRBUTTON_DOWN].RisingEdge()) {
             switch (tab_)
             {
             case 0:
@@ -1923,7 +1925,8 @@ void RenderAreaArrow() {
 
 void RenderSplash() {
     tft.WriteStringAligned("WYATT",Font_16x26,Rectangle(0,30,320,34),Alignment::centered,COLOR_YELLOW);
-    tft.WriteStringAligned("maasijam",Font_11x18,Rectangle(0,70,320,34),Alignment::centered,COLOR_YELLOW);
+    tft.WriteStringAligned("grainstorm",Font_11x18,Rectangle(0,70,320,34),Alignment::centered,COLOR_YELLOW);
+    tft.WriteStringAligned(version,Font_11x18,Rectangle(0,110,320,34),Alignment::centered,COLOR_YELLOW);
 }
 void LoadCalibration(){
     const the_calibration &cvcal = preset.thecalibration();

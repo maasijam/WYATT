@@ -1,1 +1,0 @@
-<h1>WYATT - Grainwaves</h1>
