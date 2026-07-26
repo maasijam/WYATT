@@ -9,6 +9,39 @@ namespace wyatt
 
 using namespace daisy;
 
+class DebouncedButton {
+public:
+    void Init(int8_t max_val = 5) {
+        max_val_ = max_val;
+        integrator_ = 0;
+        state_ = false;
+        prev_state_ = false;
+    }
+
+    void Process(bool raw_reading) {
+        prev_state_ = state_;
+
+        if (raw_reading) {
+            if (integrator_ < max_val_) integrator_++;
+        } else {
+            if (integrator_ > 0) integrator_--;
+        }
+
+        if (integrator_ >= max_val_) state_ = true;
+        else if (integrator_ <= 0) state_ = false;
+    }
+
+    bool State() const { return state_; }
+    bool RisingEdge() const { return !state_ && prev_state_; }
+    bool FallingEdge() const { return state_ && !prev_state_; }
+
+private:
+    int8_t integrator_ = 0;
+    int8_t max_val_ = 5;
+    bool state_ = false;
+    bool prev_state_ = false;
+};
+
 class DaisyWyatt
 {
   public:
@@ -212,8 +245,9 @@ enum Leds
     GateIn          gate_in;
     EncoderNoSwitch enc[ENC_LAST];     /**< & */
     ShiftRegister4021<2> switches_sr_; /**< Two 4021s daisy-chained. */
-    uint8_t              switches_state_[16];
+    //uint8_t              switches_state_[16];
     MidiUartHandler midi;                     /**< Handles midi*/
+    DebouncedButton sw[16];
     
 
   private:

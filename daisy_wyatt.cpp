@@ -74,6 +74,10 @@ void DaisyWyatt::Init(bool boost)
     switches_cfg.delay_ticks = 110;
     switches_sr_.Init(switches_cfg);
 
+    for (int i = 0; i < 16; i++) {
+        sw[i].Init(5); // 5 = ca. 5 * Abfrageintervall als Entprellzeit
+    }
+
     led_sw[LED_RED].Init(LED_PIN_RED,false);
     led_sw[LED_GREEN].Init(LED_PIN_GREEN,false);
     InitEncoder();
@@ -170,13 +174,12 @@ void DaisyWyatt::ProcessDigitalControls(int encScale)
 {
     switches_sr_.Update();
     
-    for(size_t i = 0; i < 16; i++)
-    {
+    for (int i = 0; i < 16; i++) {
         uint16_t keyidx, keyoffset;
         keyoffset = i > 7 ? 8 : 0;
         keyidx    = (7 - (i % 8)) + keyoffset;
-        switches_state_[keyidx]
-            = switches_sr_.State(i) | (switches_state_[keyidx] << 1);
+        bool raw = switches_sr_.State(i);
+        sw[keyidx].Process(raw);
     }
 
     for (size_t j = 0; j < ENC_LAST; j++)
@@ -249,17 +252,17 @@ void DaisyWyatt::UpdateLeds()
 
 bool DaisyWyatt::SwitchState(size_t idx) const
 {
-    return switches_state_[idx] == 0x00;
+    return sw[idx].State();
 }
 
 bool DaisyWyatt::SwitchRisingEdge(size_t idx) const
 {
-    return switches_state_[idx] == 0x80;
+    return sw[idx].RisingEdge();
 }
 
 bool DaisyWyatt::SwitchFallingEdge(size_t idx) const
 {
-    return switches_state_[idx] == 0x7F;
+    return sw[idx].FallingEdge();
 }
 
 
