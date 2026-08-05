@@ -48,27 +48,18 @@ class DaisyWyatt
 
     enum Pots
     {
-        KNOB_0,   /**< */
         KNOB_1,   /**< */
         KNOB_2,   /**< */
         KNOB_3,   /**< */
-        KNOB_4,
-        KNOB_5,
-        KNOB_6,
-        KNOB_7,
+        KNOB_4,   /**< */
         KNOB_LAST /**< */
     };
 
     enum CvIns
     {
-        CV_0,   /**< */
         CV_1,   /**< */
         CV_2,   /**< */
         CV_3,   /**< */
-        CV_4,
-        CV_5,
-        CV_6,
-        CV_7,
         CV_LAST /**< */
     };
 

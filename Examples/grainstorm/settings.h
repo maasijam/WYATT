@@ -1,5 +1,5 @@
-#ifndef WYATT2_SETTINGS_H_
-#define WYATT2_SETTINGS_H_
+#ifndef WYATT_SETTINGS_H_
+#define WYATT_SETTINGS_H_
 
 #include "../../daisy_wyatt.h"
 
@@ -225,4 +225,4 @@ class Settings {
 
 } // namespace settings
 
-#endif  // WYATT2_SETTINGS_H_
+#endif  // WYATT_SETTINGS_H_

@@ -49,15 +49,15 @@ void DaisyWyatt::Init(bool boost)
    AdcChannelConfig adc_cfg[1];
 
     adc_cfg[0].InitMux(PIN_ADC_KNOB_CV_MUX,
-                             KNOB_LAST,
+                             KNOB_LAST + CV_LAST,
                              PIN_MUX_SEL_0,
                              PIN_MUX_SEL_1,
                              PIN_MUX_SEL_2);
     
     
     seed.adc.Init(adc_cfg,1,daisy::AdcHandle::OVS_128);
-    int cv_sort[3] = {2,1,0};
-    for(size_t i = 0; i < (KNOB_LAST); i++) {
+    //int cv_sort[3] = {2,1,0};
+    for(size_t i = 0; i < (KNOB_LAST + CV_LAST); i++) {
         if(i < 4) {
             knob[i].Init(seed.adc.GetMuxPtr(0, i), AudioCallbackRate()); 
         } else if(i > 3 && i < 7) {
