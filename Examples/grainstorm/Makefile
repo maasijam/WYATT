@@ -14,7 +14,7 @@ DAISYSP_DIR = ../../DaisySP
 
 
 # Sources
-CPP_SOURCES = grainstorm.cpp osc_lfo.cpp ../../Tft/dma2d.cpp ../../Tft/ili9341_ui_driver.cpp ../../daisy_wyatt.cpp ../../libDaisyCustom/encoderNoSwitch.cpp settings.cpp ../../common/SRButton.cpp
+CPP_SOURCES = grainstorm.cpp ../../common/osc_lfo.cpp ../../Tft/dma2d.cpp ../../Tft/ili9341_ui_driver.cpp ../../daisy_wyatt.cpp ../../libDaisyCustom/encoderNoSwitch.cpp settings.cpp ../../common/tft_lib.cpp ../../common/SRButton.cpp
 
 
 C_INCLUDES += -Wno-unused-local-typedefs
