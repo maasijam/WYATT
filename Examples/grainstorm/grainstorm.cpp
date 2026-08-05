@@ -378,7 +378,6 @@ void draw_write_head_indicator() {
                 for (int y = 0; y < write_head_indicator_height+2; y++) {
                     uint16_t screen_x = wrap(x + write_head_screen_x - write_head_indicator_width / 2, 0, 320);
                     uint16_t screen_y = wrap(y + 69 +wav_y - write_head_indicator_height, 0, 128);
-                    //uint16_t bitmap_index = x + (y * write_head_indicator_width);
 
                     if (is_recording) {
                         tft.DrawPixel(screen_x, screen_y, COLOR_RED);
@@ -393,21 +392,15 @@ void draw_write_head_indicator() {
 
 void draw_grain_spawn_positions() {
     // Grain start offset
-            uint8_t y_margin = 8;
+    uint8_t y_margin = 8;
 
-            for (int i = 0; i < (int)spawn_positions_count; i++) {
-                float spawn_position_x = get_spawn_position(i) / (float)recording_length * 320;
-                //float spawn_position_x_decimal_part = modf(spawn_position_x);
-                //int time_since_last_spawn = System::GetNow() - last_spawn_time_at_position[i];
-                //float flash_intensity = 1 - (min(SPAWN_BAR_FLASH_MILLIS, time_since_last_spawn) / (float)SPAWN_BAR_FLASH_MILLIS);
-
-                //uint8_t minColor = flash_intensity * 2;
-                //uint8_t maxColor = 2 + flash_intensity * 12;
-
-                for (uint8_t y = y_margin; y < 128 - y_margin; y++) {
-                    tft.DrawPixel(spawn_position_x, y + wav_y, COLOR_BLUE);
-                }
-            }
+    for (int i = 0; i < (int)spawn_positions_count; i++) {
+        float spawn_position_x = get_spawn_position(i) / (float)recording_length * 320;
+        
+        for (uint8_t y = y_margin; y < 128 - y_margin; y++) {
+            tft.DrawPixel(spawn_position_x, y + wav_y, COLOR_BLUE);
+        }
+    }
 }
 
 
@@ -420,8 +413,6 @@ void draw_grains() {
                     uint8_t y = grain.pan * 128;
                     uint32_t current_offset = wrap(grain.spawn_position + grain.step * grains[j].playback_speed, 0, recording_length);
                     uint16_t x = (current_offset / (float)recording_length) * 320;
-
-                    //float amplitude = 2 * min((grains[j].length - grains[j].step), grains[j].step) / (float)grains[j].length;  
 
                     tft.DrawPixel(x, y + wav_y, COLOR_ORANGE);
                     tft.DrawPixel((x + 1) % 320, y + wav_y, COLOR_CYAN);
@@ -533,11 +524,8 @@ void process_controls() {
     reverb_time_val.value = reverb_time_val.knob;
     reverb_time_val.cv = 0.f;
     if(IsCvControlled(GW_RV_TIME)) {
-        //debugVal = 111;
         reverb_time_val.cv = GetCvLfoValue(GW_RV_TIME);
-        //debugVal = static_cast<int>(reverb_time_val.knob*100);
         reverb_time_val.value = clamp(reverb_time_val.knob + reverb_time_val.cv,0.0,1.0);
-        //debugVal = static_cast<int>(reverb_time_val.value*100);
         SetTftParamValue(GW_RV_TIME,reverb_time_val.value);
     }
 
@@ -656,12 +644,10 @@ void process_controls() {
 
     // Density
     float density_control = coerce_in_range(density_val.value, 0, 1);
-    //if (density_length_link_switch.Pressed()) {
-    //    spawn_time = map_to_range(1 - log10f(1 + density_control * 9), 0, MAX_GRAIN_SIZE / 4);
-    //} else {
-        grain_density = map_to_range(pow(density_control, 2), 0.5f, MAX_GRAIN_COUNT);
-        spawn_time = abs(grain_length) / grain_density;
-    //}
+    
+    grain_density = map_to_range(pow(density_control, 2), 0.5f, MAX_GRAIN_COUNT);
+    spawn_time = abs(grain_length) / grain_density;
+ 
 
     // Jitter
     spawn_time_spread = jitter_val.value;
@@ -676,9 +662,6 @@ void process_controls() {
 
     // Reverb
     float reverb_amount = max(0.f, reverb_mix_val.knob + reverb_mix_val.cv);
-    //float reverb_time = fmap(min(reverb_amount, 0.5f) * 2, 0.5f, 0.99f);
-    //float reverb_damp = fmap(reverb_amount, 100.f, 24000.f, Mapping::LOG);
-    //reverb_wet_mix = min(reverb_amount, 0.1f) * 7;
     reverb_wet_mix = fmap(reverb_amount, 0.f, 0.99f);
 
     float reverb_hpf = fmap(reverb_hpf_val.value, 20.f, 5000.f);
@@ -694,11 +677,7 @@ void process_controls() {
 
     reverb.SetFeedback(reverb_time);
     reverb.SetLpFreq(reverb_damp);
-    
-
-    // Spawn trigger out
-    //int time_since_last_spawn = System::GetNow() - last_spawn_time;
-    
+        
 }
 
 void spawn_grain() {
@@ -982,7 +961,6 @@ int main(void)
 
     fsi.Init(FatFSInterface::Config::MEDIA_SD);
     FATFS& fs = fsi.GetSDFileSystem();
-    //char filename[32];
     f_mount(&fs, "0:", 1);
 
     hw.DelayMs(100);
@@ -1064,7 +1042,6 @@ int main(void)
         }
         if (readyToRestorePreset) {
             preset.RestoreTheSettings();
-            //settingsall.RestoreCVOutCal();
             readyToRestorePreset = false;
         }
         if (readyToSaveCalibration)
@@ -1125,10 +1102,9 @@ void RenderWindow(int x, int y, int value)
 {
     int lineLeft = map_(value,0,100,60,15);
     int lineRight = map_(value,0,100,60,105);
-    //int lineTop = map_(value,0,100,0,90);
+
     tft.DrawRect(x,y,120,70,COLOR_WHITE);
     
-    // Aussen
     tft.DrawLine(x+1,y+69,x+lineLeft,y+5,COLOR_BLUE);
     tft.DrawLine(x+lineRight,y+5,x+119,y+69,COLOR_BLUE);
     if(value > 0) {
@@ -1481,12 +1457,10 @@ void ReadSwitches()
                         paramWavVal = clamp_int(paramWavVal,-1,filenames.size()-1);
                         if(hw.SwitchRisingEdge(hw.S_ENC1) && paramWavVal > -1) {
                             loadSample = true;
-                            //err_msg = "Button clicked";
                             tab_ = 0;
                         }
                         if(hw.SwitchRisingEdge(hw.S_ENC1) && paramWavVal == -1) {
                             clearMem();
-                            //err_msg = "Param Val -1";
                         }
                     }
                 }
@@ -1543,7 +1517,7 @@ void ReadSwitches()
         }
 
         // Record button/gate
-        if(hw.SwitchRisingEdge(hw.S_REC))
+        if(hw.SwitchRisingEdge(hw.S_REC) || hw.TrigIn1())
         {
 
             if (!is_recording) {
@@ -1560,7 +1534,7 @@ void ReadSwitches()
         if(buttons[SRBUTTON_FUNC].isPressedLong()) {
             mode_ = UI_MODE_CALIBRATION;
         }
-        if(buttons[SRBUTTON_SHIFT].isPressedLong()) {
+        if(buttons[SRBUTTON_SHIFT].Pressed() && hw.SwitchState(hw.S_TOP1)) {
             mode_ = UI_MODE_RESTORE_STATE;
         }
         
@@ -1731,10 +1705,7 @@ void RenderRotaryKnob_(int val, int minValue, int maxValue, int centerX, int cen
     float angle = map_(val, minValue, maxValue, 135, 405);
     // Convert angle to radians for trigonometric functions
     float radians =   angle * (PI_F / 180);
-    //float radiansLine0 =   135 * (PI_F / 180);
-    //float radiansLine1 =   270 * (PI_F / 180);
-    //float radiansLine2 =   405 * (PI_F / 180);
-    
+   
     int line0AX = centerX + (radius - 0) * cos(radians);
     int line0AY = centerY + (radius - 0) * sin(radians);
 

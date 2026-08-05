@@ -38,12 +38,10 @@ struct the_settings {
     gw_cv1_sel{0},
     gw_cv2_sel{0},
     gw_cv3_sel{0},
-    gw_cv4_sel{0},
     gw_lfo_sel{0},
     gw_cv1_att{0},
     gw_cv2_att{0},
     gw_cv3_att{0},
-    gw_cv4_att{0},
     gw_lfo1_att{0},
     gw_lfo2_att{0}
     {}
@@ -71,12 +69,10 @@ struct the_settings {
     int gw_cv1_sel;
     int gw_cv2_sel;
     int gw_cv3_sel;
-    int gw_cv4_sel;
     int gw_lfo_sel;
     int gw_cv1_att;
     int gw_cv2_att;
     int gw_cv3_att;
-    int gw_cv4_att;
     int gw_lfo1_att;
     int gw_lfo2_att;
     
@@ -130,8 +126,6 @@ struct the_settings {
             return false;
         } else if(gw_cv3_sel != rhs.gw_cv3_sel) {
             return false;
-        } else if(gw_cv4_sel != rhs.gw_cv4_sel) {
-            return false;
         } else if(gw_lfo_sel != rhs.gw_lfo_sel) {
             return false;
         } else if(gw_cv1_att != rhs.gw_cv1_att) {
@@ -139,8 +133,6 @@ struct the_settings {
         } else if(gw_cv2_att != rhs.gw_cv2_att) {
             return false;
         } else if(gw_cv3_att != rhs.gw_cv3_att) {
-            return false;
-        } else if(gw_cv4_att != rhs.gw_cv4_att) {
             return false;
         } else if(gw_lfo1_att != rhs.gw_lfo1_att) {
             return false;
@@ -157,7 +149,7 @@ struct the_settings {
 };
 
 struct the_calibration {
-	float cvOffset[4] = {0.0};
+	float cvOffset[3] = {0.0};
 	int calibrated = false;
 
     bool operator==(const the_calibration &rhs)
@@ -166,7 +158,7 @@ struct the_calibration {
         {
             return false;
         }
-        for(int i = 0; i < 4; i++)
+        for(int i = 0; i < 3; i++)
         {
             if(cvOffset[i] != rhs.cvOffset[i])
             {

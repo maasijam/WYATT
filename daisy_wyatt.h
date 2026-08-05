@@ -31,7 +31,7 @@ public:
         else if (integrator_ <= 0) state_ = false;
     }
 
-    bool State() const { return state_; }
+    bool State() const { return !state_; }
     bool RisingEdge() const { return !state_ && prev_state_; }
     bool FallingEdge() const { return state_ && !prev_state_; }
 
