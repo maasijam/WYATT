@@ -212,6 +212,22 @@ void Tft_lib::RenderCvSelector(int pos, int row, int rowOffset,int cvVal, int at
     tft_->FillRect(Rectangle(x+1, y+30, cvattPos, 6), COLOR_WHITE);
 }
 
+void Tft_lib::RenderWavSelector(int pos, int row, int rowOffset,int wavVal, const char *label, std::vector<std::string> wavnames)
+{
+    int x = 20 + (pos * 75);
+    int y = 20 + ((row + rowOffset) * 45);
+    
+    tft_->DrawRect(x,y,292,37,COLOR_WHITE);
+    tft_->FillRect(Rectangle(x+1, y+1, 50, 36), COLOR_GRAY);
+    tft_->DrawLine(x+50,y,x+50,y+36,COLOR_WHITE);
+    tft_->WriteStringAligned(label,Font_7x10,Rectangle(x+10,y+1,30,37),Alignment::centered,COLOR_WHITE);
+    if(wavVal < 0) {
+        tft_->WriteStringAligned("---",Font_7x10,Rectangle(x+50,y+1,230,37),Alignment::centeredRight,COLOR_YELLOW);
+    } else {
+        tft_->WriteStringAligned(wavnames[wavVal].c_str(),Font_7x10,Rectangle(x+50,y+1,230,37),Alignment::centeredRight,COLOR_YELLOW);
+    }
+}
+
 void Tft_lib::RenderRowDrumHeader(int x, int y, bool drumGate, bool drumGateEnc, const char *str) 
 {
     

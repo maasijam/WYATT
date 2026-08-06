@@ -3,7 +3,7 @@
 
 #include "../Tft/ili9341_ui_driver.hpp"
 #include <vector>
-
+#include <string>
 
 #define PARAM_BUFFER_SIZE 8
 
@@ -33,6 +33,7 @@ class Tft_lib {
     void RenderToggleBtnBottom(int pos, int value,bool encState, const char *str1,const char *str2);
     void RenderPlayStopBtn(int pos, int row, int rowOffset, bool btnState, const char *str, TFT_COLOR activeColor,TFT_COLOR activeTxtColor, bool isStop = false);
     void RenderCvSelector(int pos, int row, int rowOffset,int cvVal, int attVal, const char *str, const char** cv_param_labels);
+    void RenderWavSelector(int pos, int row, int rowOffset,int wavVal, const char *label, std::vector<std::string> wavnames);
     void RenderRowHeader(int pos, int row, int rowOffset, const char *str);
     void RenderLabel(int pos, int row, int rowOffset, const char *str1, TFT_COLOR bgColor = COLOR_GRAY,TFT_COLOR txtColor = COLOR_WHITE);
     void RenderSavePreset();
