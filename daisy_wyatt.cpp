@@ -75,7 +75,7 @@ void DaisyWyatt::Init(bool boost)
     switches_sr_.Init(switches_cfg);
 
     for (int i = 0; i < 16; i++) {
-        sw[i].Init(5); // 5 = ca. 5 * Abfrageintervall als Entprellzeit
+        sw[i].Init(5); 
     }
 
     led_sw[LED_RED].Init(LED_PIN_RED,false);
@@ -263,6 +263,11 @@ bool DaisyWyatt::SwitchRisingEdge(size_t idx) const
 bool DaisyWyatt::SwitchFallingEdge(size_t idx) const
 {
     return sw[idx].FallingEdge();
+}
+
+bool DaisyWyatt::SwitchIsPressedLong(size_t idx) 
+{
+    return sw[idx].IsPressedLong();
 }
 
 

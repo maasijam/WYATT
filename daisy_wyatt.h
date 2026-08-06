@@ -11,14 +11,20 @@ using namespace daisy;
 
 class DebouncedButton {
 public:
-    void Init(int8_t max_val = 5) {
+    void Init(int8_t max_val = 5, uint32_t long_press_time = 3000) {
         max_val_ = max_val;
         integrator_ = 0;
-        state_ = false;
-        prev_state_ = false;
+        state_ = true;
+        prev_state_ = true;
+        long_press_time_ = long_press_time;
+        press_start_ms_ = 0;
+        long_press_fired_ = false;
+        long_press_reported_ = false;
     }
 
     void Process(bool raw_reading) {
+
+        uint32_t now = System::GetNow();
         prev_state_ = state_;
 
         if (raw_reading) {
@@ -29,17 +35,40 @@ public:
 
         if (integrator_ >= max_val_) state_ = true;
         else if (integrator_ <= 0) state_ = false;
+
+        if (RisingEdge()) {
+            press_start_ms_  = now;
+            long_press_fired_ = false;
+            long_press_reported_  = false;
+        }
+        if (State() && !long_press_fired_) {
+            if (now - press_start_ms_ >= long_press_time_) {
+                long_press_fired_ = true;
+            }
+        }
     }
 
     bool State() const { return !state_; }
     bool RisingEdge() const { return !state_ && prev_state_; }
     bool FallingEdge() const { return state_ && !prev_state_; }
+    bool IsPressedLong()  { 
+        if (long_press_fired_ && !long_press_reported_) {
+            long_press_reported_ = true;
+            return true;
+        }
+        return false;
+    } 
 
 private:
     int8_t integrator_ = 0;
     int8_t max_val_ = 5;
     bool state_ = false;
     bool prev_state_ = false;
+    
+    uint32_t long_press_time_;
+    uint32_t press_start_ms_ = 0;
+    bool     long_press_fired_ = false;
+    bool     long_press_reported_ = false;
 };
 
 class DaisyWyatt
@@ -215,6 +244,11 @@ enum Leds
         \param idx the key of interest
     */
     bool SwitchFallingEdge(size_t idx) const;
+
+    /** Returns true if the key has reached the long press time
+        \param idx the key of interest
+    */
+    bool SwitchIsPressedLong(size_t idx);
     
 
     /**
@@ -245,11 +279,7 @@ enum Leds
     void SetHidUpdateRates();
     void InitEncoder();
     void InitMidi();
-
-    
-
-    
     
 };
 
-} // namespace white
+} // namespace wyatt
