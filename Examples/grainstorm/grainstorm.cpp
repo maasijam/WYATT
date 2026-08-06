@@ -1520,7 +1520,7 @@ void ReadSwitches()
         }
 
         // Record button/gate
-        if(hw.SwitchRisingEdge(hw.S_REC) || hw.TrigIn1())
+        if(hw.SwitchRisingEdge(hw.S_REC) || hw.Trigger())
         {
 
             if (!is_recording) {

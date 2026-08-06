@@ -159,12 +159,12 @@ void DaisyWyatt::ProcessAnalogControls()
     }
 }
 
-bool DaisyWyatt::GateIn1()
+bool DaisyWyatt::Gate()
 {
     return gate_in.State();
 }
 
-bool DaisyWyatt::TrigIn1()
+bool DaisyWyatt::Trigger()
 {
     return gate_in.Trig();
 }

@@ -189,8 +189,8 @@ enum Leds
     AnalogControl* GetKnob(size_t idx);
 
     /** Returns true if gate in is HIGH */
-    bool GateIn1();
-    bool TrigIn1();
+    bool Gate();
+    bool Trigger();
 
     /** Gets a random 32-bit value */
     inline uint32_t GetRandomValue() { return Random::GetValue(); }
