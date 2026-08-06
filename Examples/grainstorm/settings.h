@@ -38,7 +38,8 @@ struct the_settings {
     gw_cv1_sel{0},
     gw_cv2_sel{0},
     gw_cv3_sel{0},
-    gw_lfo_sel{0},
+    gw_lfo1_sel{0},
+    gw_lfo2_sel{0},
     gw_cv1_att{0},
     gw_cv2_att{0},
     gw_cv3_att{0},
@@ -69,7 +70,8 @@ struct the_settings {
     int gw_cv1_sel;
     int gw_cv2_sel;
     int gw_cv3_sel;
-    int gw_lfo_sel;
+    int gw_lfo1_sel;
+    int gw_lfo2_sel;
     int gw_cv1_att;
     int gw_cv2_att;
     int gw_cv3_att;
@@ -126,7 +128,9 @@ struct the_settings {
             return false;
         } else if(gw_cv3_sel != rhs.gw_cv3_sel) {
             return false;
-        } else if(gw_lfo_sel != rhs.gw_lfo_sel) {
+        } else if(gw_lfo1_sel != rhs.gw_lfo1_sel) {
+            return false;
+        } else if(gw_lfo2_sel != rhs.gw_lfo2_sel) {
             return false;
         } else if(gw_cv1_att != rhs.gw_cv1_att) {
             return false;
