@@ -4,7 +4,6 @@
 #include "utils.h"
 #include "grain.h"
 #include "gateInEnhanced.h"
-#include "bitmaps.h"
 #include "settings.h"
 #include "../../Tft/ili9341_ui_driver.hpp"
 #include "../../common/tft_lib.h"
@@ -19,6 +18,7 @@ using namespace settings;
 using namespace tftlib;
 
 const char* version = "v 0.1";
+const char* project_name = "Grainstorm";
 
 
 enum UiMode {
@@ -88,15 +88,10 @@ const int SPAWN_BAR_FLASH_MILLIS = 250;
 const int SPAWN_LED_FLASH_MILLIS = 250;
 const int SPAWN_TRIGGER_OUT_MILLIS = 2;
 
-constexpr Pin POWER_TFT_PIN = seed::D25;
-
 DaisyWyatt hw;
 ILI9341UiDriver tft;
 Settings preset;
 Tft_lib      tft_lib;
-
-//static const uint8_t tftwidth = 320;
-//static const uint8_t tftheight = 240;
 
 // using this because issue with creating FIL objects on stack
 #define DSY_TEXT __attribute__((section(".text")))
@@ -172,37 +167,23 @@ Stack<uint8_t, MAX_GRAIN_COUNT> available_grains;
 uint32_t last_oled_update_millis = 0;
 uint32_t last_debug_print_millis = 0;
 uint32_t last_led_update_millis = 0;
-
-int loopArea;
-int startLoop = 20000;
-int endLoop = 200000;
 uint32_t last_spawn_time_at_position[MAX_SPAWN_POINTS] = { 0 };
 
-uint16_t testx = 0;
 void ReadSwitches();
 void RenderTab1();
 void RenderTab2();
 void RenderTab3();
 void RenderTab4();
-void RenderSave();
-void RenderRestore();
 void loadSampleToBuffer(const char* fn,const char* path);
 float clamp(float x, float a, float b);
 float GetCvLfoValue(int param_idx = 0);
 bool IsCvControlled(int param_idx);
 void SetTftParamValue(int param_idx, float param_value);
 bool IsOct(int val);
-void RenderRotaryKnob_(int val, int minValue, int maxValue, int centerX, int centerY, int radius);
 void RenderWindow(int x, int y, int value);
-void RenderAreaArrow();
 void RenderCalibration();
 float GetLfoFreq(int range, float speed);
 
-int row1YT1;
-int row2YT1;
-int row3YT1;
-
-//int tft_lib.tab = 0;
 int wav_y = 15;
 int encScale_ = 1;
 
@@ -212,7 +193,6 @@ bool clearMemState = false;
 
 UiMode mode_ = UI_MODE_START;
 
-//int paramTftValue[GW_PARAMS_LAST] = {-1,0,0,0,0,100,50,0,0,100,0,0,85,70,10,0,0,0,0,0,0,0,0,0,100,100};
 int paramTftValue[GW_PARAMS_LAST];
 int paramTftCvValue[GW_PARAMS_LAST];
 int paramTftPotValue[4];
@@ -238,6 +218,7 @@ int droppedFrames = 0;
 float avg_cpu_;
 float min_cpu_;
 float max_cpu_;
+
 float lfo_val[2];
 int oct_val;
 
@@ -254,7 +235,8 @@ void LoadCalibration();
 void SaveCalibration();
 int calibrationLoader = 0;
 
-int debugVal = 0;
+const uint8_t write_head_indicator_height = 10;
+const uint8_t write_head_indicator_width = 9;
 
 class ControlHandler
 {
@@ -310,13 +292,15 @@ inline float envelope(float t) {
 }
 
 int clamp_int(int x, int a, int b)
-    {
-        return std::max(a,std::min(b,x));   
-    }
+{
+    return std::max(a,std::min(b,x));   
+}
+
 float GetParamTftValue(int idx) {
     float pVal = paramTftValue[idx] / 100.0;
     return pVal;
 };
+
 float WindowVal(float in) { return sin(HALFPI_F * in); }
 
 
@@ -336,50 +320,47 @@ inline size_t get_spawn_position(int index) {
 
 void draw_recorded_waveform() {
     uint8_t last_amplitude = 0;
-            // Traversing backwards stops the leading wave of recording
-            // affecting values infront of it due to how the smoothing filter works
-        
-            for (int x = 320 - 1; x >= 0; x--) {
-                size_t renderable_recording_index = (x / (float)320) * RENDERABLE_RECORDING_BUFFER_SIZE;
+    // Traversing backwards stops the leading wave of recording
+    // affecting values infront of it due to how the smoothing filter works
 
-                uint8_t amplitude = min(128.f, (renderable_recording[renderable_recording_index] / 0.1f * 128) * out_lvl_val.value);
+    for (int x = 320 - 1; x >= 0; x--) {
+        size_t renderable_recording_index = (x / (float)320) * RENDERABLE_RECORDING_BUFFER_SIZE;
 
-                // Smooth out the waveform
-                // TODO: Smooth differently, this produces weird classic LPF shapes
-                if (x > 0) {
-                    amplitude = amplitude * 0.4 + last_amplitude * 0.6;
-                }
-                last_amplitude = amplitude;
+        uint8_t amplitude = min(128.f, (renderable_recording[renderable_recording_index] / 0.1f * 128) * out_lvl_val.value);
 
-                uint8_t margin = (128 - amplitude) / 2;
-                if(amplitude > 0) {
+        // Smooth out the waveform
+        // TODO: Smooth differently, this produces weird classic LPF shapes
+        if (x > 0) {
+            amplitude = amplitude * 0.4 + last_amplitude * 0.6;
+        }
+        last_amplitude = amplitude;
 
-                for (uint8_t y = margin; y < 128 - margin; y++) {
-                    tft.DrawPixel(x, y + wav_y, COLOR_GRAY);
-                }
-                }
-            }
-       
+        uint8_t margin = (128 - amplitude) / 2;
+        if(amplitude > 0) {
+
+        for (uint8_t y = margin; y < 128 - margin; y++) {
+            tft.DrawPixel(x, y + wav_y, COLOR_GRAY);
+        }
+        }
+    }   
 }
 
 void draw_write_head_indicator() {
     // Write head indicator
-            uint16_t write_head_screen_x = ((write_head / (float)RECORDING_BUFFER_SIZE) * 320 - 1);
-            testx = write_head_screen_x;
-            for (int x = 0; x < write_head_indicator_width; x++) {
-                for (int y = 0; y < write_head_indicator_height+2; y++) {
-                    uint16_t screen_x = wrap(x + write_head_screen_x - write_head_indicator_width / 2, 0, 320);
-                    uint16_t screen_y = wrap(y + 69 +wav_y - write_head_indicator_height, 0, 128);
+    uint16_t write_head_screen_x = ((write_head / (float)RECORDING_BUFFER_SIZE) * 320 - 1);
+    for (int x = 0; x < write_head_indicator_width; x++) {
+        for (int y = 0; y < write_head_indicator_height+2; y++) {
+            uint16_t screen_x = wrap(x + write_head_screen_x - write_head_indicator_width / 2, 0, 320);
+            uint16_t screen_y = wrap(y + 69 +wav_y - write_head_indicator_height, 0, 128);
 
-                    if (is_recording) {
-                        tft.DrawPixel(screen_x, screen_y, COLOR_RED);
-                    } else {
-                        tft.DrawPixel(screen_x, screen_y, IsOct(oct_val) ? COLOR_YELLOW : COLOR_BLUE);
-                    }
-                }
+            if (is_recording) {
+                tft.DrawPixel(screen_x, screen_y, COLOR_RED);
+            } else {
+                tft.DrawPixel(screen_x, screen_y, IsOct(oct_val) ? COLOR_YELLOW : COLOR_BLUE);
             }
-
-            tft.DrawLine(write_head_screen_x,12+wav_y,write_head_screen_x,115+wav_y,is_recording ? COLOR_RED : IsOct(oct_val) ? COLOR_YELLOW : COLOR_BLUE);
+        }
+    }
+    tft.DrawLine(write_head_screen_x,12+wav_y,write_head_screen_x,115+wav_y,is_recording ? COLOR_RED : IsOct(oct_val) ? COLOR_YELLOW : COLOR_BLUE);
 }
 
 void draw_grain_spawn_positions() {
@@ -398,19 +379,19 @@ void draw_grain_spawn_positions() {
 
 void draw_grains() {
     // Grains
-            for (int j = 0; j < MAX_GRAIN_COUNT; j++) {
-                Grain grain = grains[j];
+    for (int j = 0; j < MAX_GRAIN_COUNT; j++) {
+        Grain grain = grains[j];
 
-                if (grain.step <= grain.length) {
-                    uint8_t y = grain.pan * 128;
-                    uint32_t current_offset = wrap(grain.spawn_position + grain.step * grains[j].playback_speed, 0, recording_length);
-                    uint16_t x = (current_offset / (float)recording_length) * 320;
+        if (grain.step <= grain.length) {
+            uint8_t y = grain.pan * 128;
+            uint32_t current_offset = wrap(grain.spawn_position + grain.step * grains[j].playback_speed, 0, recording_length);
+            uint16_t x = (current_offset / (float)recording_length) * 320;
 
-                    tft.DrawPixel(x, y + wav_y, COLOR_ORANGE);
-                    tft.DrawPixel((x + 1) % 320, y + wav_y, COLOR_CYAN);
-                    tft.DrawPixel((x + 2) % 320, y + wav_y, COLOR_DARK_GREEN);
-                }
-            }
+            tft.DrawPixel(x, y + wav_y, COLOR_ORANGE);
+            tft.DrawPixel((x + 1) % 320, y + wav_y, COLOR_CYAN);
+            tft.DrawPixel((x + 2) % 320, y + wav_y, COLOR_DARK_GREEN);
+        }
+    }
 }
 
 
@@ -428,7 +409,6 @@ inline void record_xfaded_sample(float sample_in) {
         xfade_magnitude
     );
 }
-
 
 
 void process_controls() {
@@ -501,7 +481,6 @@ void process_controls() {
         count_val.value = clamp(count_val.knob + count_val.cv,0.0,1.0);
         SetTftParamValue(GW_COUNT,count_val.value);
     }
-    //debugVal = static_cast<int>(count_val.cv*100);
 
     reverb_mix_val.knob = GetParamTftValue(GW_REVERB);
     reverb_mix_val.value = reverb_mix_val.knob;
@@ -798,7 +777,6 @@ void calculate_audio_out(float in_l, float in_r, float &out_l, float &out_r) {
 
 void init() {
     
-    
     // Populate available grains stack
     for (u_int8_t i = 0; i < MAX_GRAIN_COUNT; i++) {
         available_grains.PushBack(i);
@@ -934,7 +912,7 @@ int main(void)
     if(tft.IsRender())
         {
             tft.Fill(COLOR_BLACK);
-            tft_lib.RenderSplash("Grainstorm",version);
+            tft_lib.RenderSplash(project_name,version);
             tft.Update();
         }
     
@@ -1017,7 +995,7 @@ int main(void)
 
         if (System::GetNow() - last_load_sample_time > 100 && loadSample)
         {
-            err_msg = filenames[paramWavVal].c_str();
+            //err_msg = filenames[paramWavVal].c_str();
             loadSampleToBuffer(filenames[paramWavVal].c_str(),"/samples");  
             loadSample = false;
             
@@ -1261,7 +1239,7 @@ void ReadSwitches()
                 break;
             }
         }
-
+        // Encoder values
         for (size_t i = 0; i < 4; i++)
         {
             switch (tft_lib.tab)
@@ -1330,19 +1308,15 @@ void ReadSwitches()
                     if(i == 0) {
                         paramTftValue[GW_CV1_TARGET] += hw.enc[i].Increment();
                         paramTftValue[GW_CV1_TARGET] = clamp_int(paramTftValue[GW_CV1_TARGET],0,kNumCvParams-1);
-                        //paramTftValue[GW_CV1_TARGET] = cvSelValue_[i];
                     } else if(i == 2){
                         paramTftValue[GW_CV2_TARGET] += hw.enc[i].Increment();
                         paramTftValue[GW_CV2_TARGET] = clamp_int(paramTftValue[GW_CV2_TARGET],0,kNumCvParams-1);
-                        //paramTftValue[GW_CV2_TARGET] = cvSelValue_[i-1];
                     } else if(i == 1) {
                         paramTftValue[GW_CV1_ATT] += hw.enc[i].Increment();
                         paramTftValue[GW_CV1_ATT] = clamp_int(paramTftValue[GW_CV1_ATT],0,100);
-                        //paramTftValue[GW_CV1_ATT] = cvAttValue_[i-1];
                     } else {
                         paramTftValue[GW_CV2_ATT] += hw.enc[i].Increment();
                         paramTftValue[GW_CV2_ATT] = clamp_int(paramTftValue[GW_CV2_ATT],0,100);
-                        //paramTftValue[GW_CV2_ATT] = cvAttValue_[i-2];
                     }
                     
                 }
@@ -1350,13 +1324,11 @@ void ReadSwitches()
                     if(i == 0) {
                         paramTftValue[GW_CV3_TARGET] += hw.enc[i].Increment();
                         paramTftValue[GW_CV3_TARGET] = clamp_int(paramTftValue[GW_CV3_TARGET],0,kNumCvParams-1);
-                        //paramTftValue[GW_CV3_TARGET] = cvSelValue_[i+2];
                     } else if(i == 2){
                         
                     } else if(i == 1) {
                         paramTftValue[GW_CV3_ATT] += hw.enc[i].Increment();
                         paramTftValue[GW_CV3_ATT] = clamp_int(paramTftValue[GW_CV3_ATT],0,100);
-                        //paramTftValue[GW_CV3_ATT] = cvAttValue_[i+1];
                     } else {
                         
                     }
@@ -1365,19 +1337,15 @@ void ReadSwitches()
                     if(i == 0) {
                         paramTftValue[GW_LFO1_TARGET] += hw.enc[i].Increment();
                         paramTftValue[GW_LFO1_TARGET] = clamp_int(paramTftValue[GW_LFO1_TARGET],0,kNumCvParams-1);
-                        //paramTftValue[GW_LFO1_TARGET] = lfoSelValue_[i];
                     }  else if(i == 1) {
                         paramTftValue[GW_LFO1_ATT] += hw.enc[i].Increment();
                         paramTftValue[GW_LFO1_ATT] = clamp_int(paramTftValue[GW_LFO1_ATT],0,100);
-                        //paramTftValue[GW_LFO1_ATT] = lfoAttValue_[i-1];
                     } else if(i == 2) {
                         paramTftValue[GW_LFO2_TARGET] += hw.enc[i].Increment();
                         paramTftValue[GW_LFO2_TARGET] = clamp_int(paramTftValue[GW_LFO2_TARGET],0,kNumCvParams-1);
-                        //paramTftValue[GW_LFO2_TARGET] = lfoSelValue_[i-1];
                     }  else if(i == 3) {
                         paramTftValue[GW_LFO2_ATT] += hw.enc[i].Increment();
                         paramTftValue[GW_LFO2_ATT] = clamp_int(paramTftValue[GW_LFO2_ATT],0,100);
-                        //paramTftValue[GW_LFO2_ATT] = lfoAttValue_[i-2];
                     }                    
                 }
             break;
@@ -1389,7 +1357,6 @@ void ReadSwitches()
         // Record button/gate
         if(hw.SwitchRisingEdge(hw.S_REC) || hw.Trigger())
         {
-
             if (!is_recording) {
                 is_recording = true;
                 recording_xfade_step = 0;
