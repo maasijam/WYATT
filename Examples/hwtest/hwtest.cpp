@@ -1,23 +1,26 @@
 #include "../../daisy_wyatt.h"
 #include "daisysp.h"
-///#include "core_cm7.h"
 #include "../../Tft/ili9341_ui_driver.hpp"
+#include "../../common/tft_lib.h"
 
 using namespace daisy;
 using namespace daisysp;
 using namespace wyatt;
-//using namespace std;
+using namespace tftlib;
 
-float PI = 3.14159265359;
-
+const char* version = "v 1.0";
+const char* project_name = "Hardware-Test";
 
 DaisyWyatt hw;
 ILI9341UiDriver driver;
+Tft_lib      tft_lib;
 
 FIL            file; /**< Can't be made on the stack (DTCMRAM) */
 FatFSInterface fsi;
 WAV_FormatTypeDef wavHeader;
 bool fsi_loaded = false;
+bool colorToggle = false;
+int trigCount = 0;
 
 static Metro  intclock;
 
@@ -33,10 +36,12 @@ void RenderTest_();
 void drawRotarySlider(int value, int minValue, int maxValue, int centerX, int centerY, int radius);
 void generateHzValues();
 float getHzFromBpm(int bpm);  
+void MIDISendNoteOn(uint8_t channel, uint8_t notenum, uint8_t velocity);
+void MIDISendNoteOff(uint8_t channel, uint8_t notenum);
 
 float pos[4] = {0};
 float cv[3] = {0};
-int encValue[5] = {0};
+int encValue[4] = {0};
 
 void HandleMidiMessage(MidiEvent m);
 int renderNote = 0;
@@ -65,35 +70,28 @@ void AudioCallback(
     intclock.SetFreq(getHzFromBpm(40)*4);
     
   
-    float in_gain = hw.GetKnobValue(hw.KNOB_0);
-    pos[0] = hw.GetKnobValue(hw.KNOB_0) * 1000;
-    pos[1] = hw.GetKnobValue(hw.KNOB_1) * 1000;
-    pos[2] = hw.GetKnobValue(hw.KNOB_2) * 1000;
-    pos[3] = hw.GetKnobValue(hw.KNOB_3) * 1000;
+    pos[0] = hw.GetKnobValue(hw.KNOB_1) * 1000;
+    pos[1] = hw.GetKnobValue(hw.KNOB_2) * 1000;
+    pos[2] = hw.GetKnobValue(hw.KNOB_3) * 1000;
+    pos[3] = hw.GetKnobValue(hw.KNOB_4) * 1000;
 
-    cv[0] = hw.GetCvValue(hw.CV_0) * 1000;
-    cv[1] = hw.GetCvValue(hw.CV_1) * 1000;
-    cv[2] = hw.GetCvValue(hw.CV_2) * 1000;
+    cv[0] = hw.GetCvValue(hw.CV_1) * 1000;
+    cv[1] = hw.GetCvValue(hw.CV_2) * 1000;
+    cv[2] = hw.GetCvValue(hw.CV_3) * 1000;
     
-
-    //float in_gain = 1.f;
-
     // Process audio output
     for(size_t i = 0; i < size; i++)
     {
         tic = intclock.Process();
         if(tic)
         {
-            //trigMidiOut = !trigMidiOut;
+            trigMidiOut = !trigMidiOut;
         } 
         
         
         // store signal = loop signal * loop gain + in * in_gain
-        float sig_l = IN_L[i] * in_gain;
-        float sig_r = IN_L[i] * in_gain;
-
-
-        
+        float sig_l = IN_L[i];
+        float sig_r = IN_L[i];
 
         // send that signal to the outputs
         OUT_L[i] = sig_l;
@@ -107,9 +105,18 @@ int main(void)
 {
     hw.Init(false);
     driver.Init(frame_buffer);
+    tft_lib.Init(&driver);
     float samplerate = hw.AudioSampleRate();
 
+    if(driver.IsRender())
+    {
+        driver.Fill(COLOR_BLACK);
+        tft_lib.RenderSplash(project_name,version);
+        driver.Update();
+    }
 
+    hw.DelayMs(1500);
+    
      /** SD card next */
     SdmmcHandler::Config sd_config;
     SdmmcHandler         sdcard;
@@ -120,11 +127,7 @@ int main(void)
 
     fsi.Init(FatFSInterface::Config::MEDIA_SD);
     FATFS& fs = fsi.GetSDFileSystem();
-    char filename[32];
-    UINT bytes_read;
 
-    //sampler.Init(fsi.GetSDPath());
-    //sampler.SetLooping(true);
     if (f_mount(&fs, "/", 1) == FR_OK) {
         fsi_loaded = true;
     }
@@ -157,17 +160,27 @@ int main(void)
             hw.SetLed(hw.LED_GREEN,false);
         }
 
+        if(hw.SwitchRisingEdge(hw.S_REC)) {
+            colorToggle = !colorToggle;
+        }
         
-        
-        if(hw.SwitchState(hw.S_REC) || hw.GateIn1()) {
-            //hw.SetLed(hw.LED_RED, true);
+        if(hw.SwitchState(hw.S_REC) || hw.Gate()) {
+            if(colorToggle) {
+                hw.SetLed(hw.LED_GREEN, true);
+            } else {
+                hw.SetLed(hw.LED_RED, true);
+            }
         } else {
-            //hw.SetLed(hw.LED_RED,false);
+            if(colorToggle) {
+                hw.SetLed(hw.LED_GREEN, false);
+            } else {
+                hw.SetLed(hw.LED_RED, false);
+            }
         }
 
         hw.UpdateLeds();
         
-        for (size_t i = 0; i < 5; i++)
+        for (size_t i = 0; i < 4; i++)
         {
             encValue[i] += hw.enc[i].Increment();
         }
@@ -180,7 +193,17 @@ int main(void)
         }
 
         
-        
+        if(trigMidiOut) {
+            if(trigCount == 0) {
+                MIDISendNoteOn(1,48,64);
+                trigCount++;
+            }
+        } else {
+            if(trigCount == 1) {
+                MIDISendNoteOff(1,48);
+                trigCount = 0;
+            }
+        }
         
 
         TftProcess();
@@ -201,8 +224,7 @@ void TftDisplayManager()
     if(driver.IsRender())
         {
             driver.Fill(COLOR_BLACK);  
-            RenderTest_();  
-            //hw.driver.WriteString("pos:",5,5,Font_11x18,COLOR_YELLOW);        
+            RenderTest_();       
             driver.Update();
            
         }
@@ -213,81 +235,82 @@ void TftDisplayManager()
 
 
 void RenderTest_() {
-    //driver.Fill(COLOR_BLACK);
-    //driver.FillRect(Rectangle(10, 200, 15, 15), COLOR_YELLOW);
+    
     if(hw.SwitchState(hw.S_TOP1)) {
-        driver.FillRect(Rectangle(10, 200, 15, 15), COLOR_BLUE);
+        driver.FillRect(Rectangle(5, 225, 15, 10), COLOR_BLUE);
     }
     if(hw.SwitchState(hw.S_TOP2)) {
-        driver.FillRect(Rectangle(30, 200, 15, 15), COLOR_BLUE);
+        driver.FillRect(Rectangle(25, 225, 15, 10), COLOR_BLUE);
     }
     if(hw.SwitchState(hw.S_TOP3)) {
-        driver.FillRect(Rectangle(50, 200, 15, 15), COLOR_BLUE);
+        driver.FillRect(Rectangle(45, 225, 15, 10), COLOR_BLUE);
     }
     if(hw.SwitchState(hw.S_TOP4)) {
-        driver.FillRect(Rectangle(70, 200, 15, 15), COLOR_BLUE);
+        driver.FillRect(Rectangle(65, 225, 15, 10), COLOR_BLUE);
     }
     if(hw.SwitchState(hw.S_PAGE_UP)) {
-        driver.FillRect(Rectangle(90, 200, 15, 15), COLOR_BLUE);
+        driver.FillRect(Rectangle(85, 225, 15, 10), COLOR_BLUE);
     }
     if(hw.SwitchState(hw.S_PAGE_DOWN)) {
-        driver.FillRect(Rectangle(110, 200, 15, 15), COLOR_BLUE);
+        driver.FillRect(Rectangle(105, 225, 15, 10), COLOR_BLUE);
     }
     if(hw.SwitchState(hw.S_FUNC)) {
-        driver.FillRect(Rectangle(130, 200, 15, 15), COLOR_BLUE);
-    }
-    if(hw.SwitchState(hw.S_REC)) {
-        driver.FillRect(Rectangle(150, 200, 15, 15), COLOR_BLUE);
-    }
-    if(hw.SwitchState(hw.S_ENC1)) {
-        driver.FillRect(Rectangle(170, 200, 15, 15), COLOR_BLUE);
-    }
-    if(hw.SwitchState(hw.S_ENC2)) {
-        driver.FillRect(Rectangle(190, 200, 15, 15), COLOR_BLUE);
-    }
-    if(hw.SwitchState(hw.S_ENC3)) {
-        driver.FillRect(Rectangle(210, 200, 15, 15), COLOR_BLUE);
-    }
-    if(hw.SwitchState(hw.S_ENC4)) {
-        driver.FillRect(Rectangle(230, 200, 15, 15), COLOR_BLUE);
+        driver.FillRect(Rectangle(125, 225, 15, 10), COLOR_BLUE);
     }
     if(hw.SwitchState(hw.S_SHIFT)) {
-        driver.FillRect(Rectangle(250, 200, 15, 15), COLOR_BLUE);
+        driver.FillRect(Rectangle(145, 225, 15, 10), COLOR_BLUE);
+    }
+    if(hw.SwitchState(hw.S_REC)) {
+        driver.FillRect(Rectangle(245, 225, 15, 10), COLOR_BLUE);
+    }
+    if(hw.SwitchState(hw.S_ENC1)) {
+        driver.FillRect(Rectangle(165, 225, 15, 10), COLOR_BLUE);
+    }
+    if(hw.SwitchState(hw.S_ENC2)) {
+        driver.FillRect(Rectangle(185, 225, 15, 10), COLOR_BLUE);
+    }
+    if(hw.SwitchState(hw.S_ENC3)) {
+        driver.FillRect(Rectangle(205, 225, 15, 10), COLOR_BLUE);
+    }
+    if(hw.SwitchState(hw.S_ENC4)) {
+        driver.FillRect(Rectangle(225, 225, 15, 10), COLOR_BLUE);
     }
     
+    
 
-    driver.WriteString("gain:",5,5,Font_11x18,COLOR_YELLOW);
+    driver.WriteString("KNOB1:",5,5,Font_11x18,COLOR_YELLOW);
     driver.WriteString(GetIntAsString(static_cast<int>(pos[0])),80,5,Font_11x18,COLOR_YELLOW);
-    driver.WriteString("start:",170,5,Font_11x18,COLOR_YELLOW);
+    driver.WriteString("KNOB2:",170,5,Font_11x18,COLOR_YELLOW);
     driver.WriteString(GetIntAsString(static_cast<int>(pos[1])),250,5,Font_11x18,COLOR_YELLOW);
-    driver.WriteString("recsize:",5,30,Font_11x18,COLOR_YELLOW);
-    driver.WriteString(GetIntAsString(static_cast<int>(pos[2])),100,30,Font_11x18,COLOR_YELLOW);
-    driver.WriteString("length:",170,30,Font_11x18,COLOR_YELLOW);
+    driver.WriteString("KNOB3:",5,30,Font_11x18,COLOR_YELLOW);
+    driver.WriteString(GetIntAsString(static_cast<int>(pos[2])),80,30,Font_11x18,COLOR_YELLOW);
+    driver.WriteString("KNOB4:",170,30,Font_11x18,COLOR_YELLOW);
     driver.WriteString(GetIntAsString(static_cast<int>(pos[3])),250,30,Font_11x18,COLOR_YELLOW);
-    driver.WriteString("enc1:",5,55,Font_11x18,COLOR_YELLOW);
+    driver.WriteString("ENC1:",5,55,Font_11x18,COLOR_YELLOW);
     driver.WriteString(GetIntAsString(encValue[0]),80,55,Font_11x18,COLOR_YELLOW);
-    driver.WriteString("enc2:",170,55,Font_11x18,COLOR_YELLOW);
+    driver.WriteString("ENC2:",170,55,Font_11x18,COLOR_YELLOW);
     driver.WriteString(GetIntAsString(encValue[1]),250,55,Font_11x18,COLOR_YELLOW);
-    driver.WriteString("enc3:",5,80,Font_11x18,COLOR_YELLOW);
+    driver.WriteString("ENC3:",5,80,Font_11x18,COLOR_YELLOW);
     driver.WriteString(GetIntAsString(encValue[2]),80,80,Font_11x18,COLOR_YELLOW);
-    driver.WriteString("enc4:",170,80,Font_11x18,COLOR_YELLOW);
+    driver.WriteString("ENV4:",170,80,Font_11x18,COLOR_YELLOW);
     driver.WriteString(GetIntAsString(encValue[3]),250,80,Font_11x18,COLOR_YELLOW);
-    //driver.WriteString("enc5:",5,105,Font_11x18,COLOR_YELLOW);
-    //driver.WriteString(GetIntAsString(encValue[4]),80,105,Font_11x18,COLOR_YELLOW);
-    driver.WriteString("sd:",170,105,Font_11x18,COLOR_YELLOW);
-    driver.WriteString((fsi_loaded ? "ON" : "OFF"),250,105,Font_11x18,COLOR_YELLOW);
+    
+    driver.WriteString("CV1:",5,105,Font_11x18,COLOR_YELLOW);
+    driver.WriteString(GetIntAsString(static_cast<int>(cv[0])),80,105,Font_11x18,COLOR_YELLOW);
+    driver.WriteString("CV2:",170,105,Font_11x18,COLOR_YELLOW);
+    driver.WriteString(GetIntAsString(static_cast<int>(cv[1])),250,105,Font_11x18,COLOR_YELLOW);
+    driver.WriteString("CV3:",5,130,Font_11x18,COLOR_YELLOW);
+    driver.WriteString(GetIntAsString(static_cast<int>(cv[2])),80,130,Font_11x18,COLOR_YELLOW);
+    
+    driver.WriteString("SD:",5,155,Font_11x18,COLOR_YELLOW);
+    driver.WriteString((fsi_loaded ? "TRUE" : "FALSE"),80,155,Font_11x18,COLOR_YELLOW);
+    driver.WriteString("GATE:",170,155,Font_11x18,COLOR_YELLOW);
+    driver.WriteString((hw.Gate() ? "ON" : "OFF"),250,155,Font_11x18,COLOR_YELLOW);
 
-    driver.WriteString("cv1:",5,130,Font_11x18,COLOR_YELLOW);
-    driver.WriteString(GetIntAsString(static_cast<int>(cv[0])),80,130,Font_11x18,COLOR_YELLOW);
-    driver.WriteString("cv2:",170,130,Font_11x18,COLOR_YELLOW);
-    driver.WriteString(GetIntAsString(static_cast<int>(cv[1])),250,130,Font_11x18,COLOR_YELLOW);
-    driver.WriteString("cv3:",5,155,Font_11x18,COLOR_YELLOW);
-    driver.WriteString(GetIntAsString(static_cast<int>(cv[2])),80,155,Font_11x18,COLOR_YELLOW);
-    //driver.WriteString("cv4:",170,155,Font_11x18,COLOR_YELLOW);
-    //driver.WriteString(GetIntAsString(static_cast<int>(cv[3])),250,155,Font_11x18,COLOR_YELLOW);
-
-    //drawRotarySlider(encValue[0],0,100,280,210,25);
-    driver.WriteString(GetIntAsString(renderNote),20,220,Font_11x18,COLOR_YELLOW);
+    driver.WriteString("MIDI IN NOTE:",5,180,Font_11x18,COLOR_YELLOW);
+    driver.WriteString(GetIntAsString(renderNote),200,180,Font_11x18,COLOR_YELLOW);
+    driver.WriteString("MIDI OUT NOTE:",5,205,Font_11x18,COLOR_YELLOW);
+    driver.WriteString((trigMidiOut ? "48" : ""),200,205,Font_11x18,COLOR_YELLOW);
     
 }
 
@@ -295,55 +318,7 @@ long map(long x, long in_min, long in_max, long out_min, long out_max) {
   return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
 
-void drawRotarySlider(int value, int minValue, int maxValue, int centerX, int centerY, int radius) {
-    
-    if(value < 0) {
-        value = 0;
-    }
-    if(value > 100) {
-        value = 100;
-    }   
-    // Draw the outer circle of the slider
-    driver.DrawCircle(centerX, centerY, radius, COLOR_WHITE);
-    
-    
-    // Map the encoder value to an angle (0 to 360 degrees)
-    float angle = map(value, minValue, maxValue, 135, 405);
-    // Convert angle to radians for trigonometric functions
-    float radians =   angle * (PI / 180);
-    float radiansLine0 =   135 * (PI / 180);
-    float radiansLine1 =   270 * (PI / 180);
-    float radiansLine2 =   405 * (PI / 180);
-    
-    // Calculate the position of the indicator "knob" using polar to Cartesian conversion
-    int knobX = centerX + (radius - 10) * cos(radians);
-    int knobY = centerY + (radius - 10) * sin(radians);
 
-    /*int line0AX = centerX + (radius - 0) * cos(radiansLine0);
-    int line0AY = centerY + (radius - 0) * sin(radiansLine0);
-
-    int line0BX = centerX + (radius - 5) * cos(radiansLine0);
-    int line0BY = centerY + (radius -5) * sin(radiansLine0);
-
-    int line1AX = centerX + ((radius - 0) * cos(radiansLine1));
-    int line1AY = centerY + ((radius - 0) * sin(radiansLine1));
-
-    int line1BX = centerX + ((radius + 2) * cos(radiansLine1));
-    int line1BY = centerY + ((radius + 2) * sin(radiansLine1));
-
-    int line2AX = centerX + (radius - 0) * cos(radiansLine2);
-    int line2AY = centerY + (radius - 0) * sin(radiansLine2);
-
-    int line2BX = centerX + (radius - 5) * cos(radiansLine2);
-    int line2BY = centerY + (radius - 5) * sin(radiansLine2);*/
-    
-    // Draw the indicator (e.g., a filled circle or line)
-    driver.FillCircle(knobX, knobY, 3, COLOR_YELLOW);
-    //driver.DrawLine(line0AX,line0AY,line0BX,line0BY,COLOR_WHITE);
-    //driver.DrawLine(line1AX,line1AY,line1BX,line1BY,COLOR_WHITE);
-    //driver.DrawLine(line2AX,line2AY,line2BX,line2BY,COLOR_WHITE);
-   
-}
 
 // Typical Switch case for Message Type.
 void HandleMidiMessage(MidiEvent m)
@@ -392,4 +367,25 @@ void generateHzValues() {
 }
 float getHzFromBpm(int bpm){
     return hertzValues[bpm - startBpm];
+}
+
+void MIDISendNoteOn(uint8_t channel, uint8_t notenum, uint8_t velocity)
+{
+    uint8_t data[3] = {0};
+
+    data[0] = (channel & 0x0F) + 0x90; // limit channel byte, add status byte
+    data[1] = notenum & 0x7F;             // remove MSB on data
+    data[2] = velocity & 0x7F;
+
+    hw.midi.SendMessage(data, 3);
+}
+void MIDISendNoteOff(uint8_t channel, uint8_t notenum)
+{
+    uint8_t data[3] = {0};
+
+    data[0] = (channel & 0x0F) + 0x80; // limit channel byte, add status byte
+    data[1] = notenum & 0x7F;             // remove MSB on data
+    data[2] = 0 & 0x7F;
+
+    hw.midi.SendMessage(data, 3);
 }
