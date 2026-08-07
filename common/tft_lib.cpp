@@ -180,10 +180,7 @@ void Tft_lib::RenderPotParam(int pos, int value, const char *str)
     float angle = map(50, 0, 100, 135, 405);
     // Convert angle to radians for trigonometric functions
     float radians =   angle * (M_PI / 180);
-    float radiansLine0 =   135 * (M_PI / 180);
-    float radiansLine1 =   270 * (M_PI / 180);
-    float radiansLine2 =   405 * (M_PI / 180);
-    
+        
     int line0AX = centerX + (radius - 0) * cos(radians);
     int line0AY = centerY + (radius - 0) * sin(radians);
 
@@ -245,7 +242,7 @@ void Tft_lib::RenderRowTabHeader(int area, const char** tabLabels, int arrSize)
     int x = 20;
     int y = 25;
    
-    for (size_t i = 0; i < arrSize; i++)
+    for (int i = 0; i < arrSize; i++)
     {
         tft_->FillRect(Rectangle(x + (i*75) , y , 68, 25), area == i ? COLOR_YELLOW : COLOR_GRAY);
         tft_->WriteStringAligned(tabLabels[i],Font_7x10,Rectangle(x + (i*75),y-1,69,28),Alignment::centered, area == i ? COLOR_BLACK : COLOR_WHITE);
