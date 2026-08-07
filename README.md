@@ -22,7 +22,7 @@
 ## Examples
 | Project name | Description | App type |
 | ------------ | -------- | -----------|
-| Grainstorm | Granular synth / effect | BOOT_SRAM |
+| [Grainstorm](Examples/grainstorm/) | Granular synth / effect | BOOT_SRAM |
 | hwtest | Wyatt Hardware test | BOOT_NONE |
 <br/>
 <br/>
