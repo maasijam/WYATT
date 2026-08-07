@@ -19,6 +19,14 @@
 <br/>
 <br/>
 
+## Examples
+| Project name | Description | App type |
+| ------------ | -------- | -----------|
+| Grainstorm | Granular synth / effect | BOOT_SRAM |
+| hwtest | Wyatt Hardware test | BOOT_NONE |
+<br/>
+<br/>
+
 > [!IMPORTANT]
 > For the TFT display to work correctly, you need to change the following line in libDaisy:
 > https://github.com/electro-smith/libDaisy/blob/master/src/sys/system.cpp#L528 to MPU_InitStruct.Size = MPU_REGION_SIZE_256KB;
