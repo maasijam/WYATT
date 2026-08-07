@@ -179,9 +179,6 @@ int endLoop = 200000;
 uint32_t last_spawn_time_at_position[MAX_SPAWN_POINTS] = { 0 };
 
 uint16_t testx = 0;
-void RenderParam(int x, int y, int slider, const char *str);
-void RenderTabRect(int tab);
-void RenderAreaIndicator();
 void ReadSwitches();
 void RenderTab1();
 void RenderTab2();
@@ -189,24 +186,15 @@ void RenderTab3();
 void RenderTab4();
 void RenderSave();
 void RenderRestore();
-void RenderCvSelector(int x, int y,int idx);
-void RenderLfoSelector(int x, int y,int idx);
-void RenderWavSelector(int x, int y,int idx);
 void loadSampleToBuffer(const char* fn,const char* path);
 float clamp(float x, float a, float b);
 float GetCvLfoValue(int param_idx = 0);
 bool IsCvControlled(int param_idx);
 void SetTftParamValue(int param_idx, float param_value);
 bool IsOct(int val);
-void RenderPotParam(int x, int y, int value, const char *str); 
 void RenderRotaryKnob_(int val, int minValue, int maxValue, int centerX, int centerY, int radius);
 void RenderWindow(int x, int y, int value);
-void RenderTab1Row1();
-void RenderTab1Row2();
-void RenderTab1Row3();
-void RowTab1Y();
 void RenderAreaArrow();
-void RenderSplash();
 void RenderCalibration();
 float GetLfoFreq(int range, float speed);
 
@@ -215,7 +203,7 @@ int row2YT1;
 int row3YT1;
 
 //int tft_lib.tab = 0;
-int wav_y = 10;
+int wav_y = 15;
 int encScale_ = 1;
 
 float getRndOct(float potvalue);
@@ -829,6 +817,8 @@ void init() {
     hpf_r.SetFreq(400.0);
     hpf_r.SetRes(0);
     hpf_r.SetDrive(0);
+
+    paramTftValue[GW_WAV_FILE] = paramWavVal;
     
 }
 
@@ -944,7 +934,7 @@ int main(void)
     if(tft.IsRender())
         {
             tft.Fill(COLOR_BLACK);
-            RenderSplash();
+            tft_lib.RenderSplash("Grainstorm",version);
             tft.Update();
         }
     
@@ -1010,10 +1000,10 @@ int main(void)
                 RenderTab4();
             break;
             case UI_MODE_SAVE:
-                RenderSave();
+                tft_lib.RenderSavePreset();
             break;
             case UI_MODE_RESTORE_STATE:
-                RenderRestore();
+                tft_lib.RenderRestorePreset();
             break;
             case UI_MODE_CALIBRATION:
                 RenderCalibration();
@@ -1059,44 +1049,6 @@ int map_(int x, int in_min, int in_max, int out_min, int out_max) {
     }
 
 
-void RenderParam(int x, int y, int value, const char *str) 
-{
-    int paramPos = map_(value,0,100,0,53);
-    tft.DrawRect(x,y,60,36,COLOR_WHITE);
-    tft.FillRect(Rectangle(x + 1, y + 21, 59, 15), COLOR_YELLOW);
-    tft.FillRect(Rectangle(x + 1 + paramPos, y + 22, 6, 14), COLOR_BLACK);
-    tft.WriteStringAligned(str,Font_7x10,Rectangle(x,y-1,60,26),Alignment::centered,COLOR_WHITE);
-}
-void RenderPotParam(int x, int y, int value, const char *str) 
-{
-    int paramPos = map_(value,0,100,0,53);
-    tft.DrawRect(x,y,60,25,COLOR_WHITE);
-    tft.FillRect(Rectangle(x + 1, y + 18, 59, 7), COLOR_YELLOW);
-    tft.FillRect(Rectangle(x + 1 + paramPos, y + 19, 6, 6), COLOR_BLACK);
-    tft.WriteStringAligned(str,Font_7x10,Rectangle(x,y,60,21),Alignment::centered,COLOR_WHITE);
-}
-void RenderParamChar(int x, int y, int value, const char *str, int charset) 
-{
-    const char *label = "";
-    
-    switch (charset)
-    {
-    case LFO_WAVE:
-        label = lfo_wave_labels[value];
-        break;
-    case LFO_RANGE:
-        label = lfo_range_labels[value];
-        break;
-    default:
-        break;
-    }
-    //int waveform = value;
-    tft.DrawRect(x,y,60,36,COLOR_WHITE);
-    tft.FillRect(Rectangle(x + 1, y + 20, 59, 16), COLOR_GRAY);
-    tft.WriteStringAligned(str,Font_7x10,Rectangle(x,y-1,60,26),Alignment::centered,COLOR_WHITE);
-    tft.WriteStringAligned(label,Font_7x10,Rectangle(x,y+21,60,15),Alignment::centered,COLOR_WHITE);
-}
-
 void RenderWindow(int x, int y, int value) 
 {
     int lineLeft = map_(value,0,100,60,15);
@@ -1111,44 +1063,6 @@ void RenderWindow(int x, int y, int value)
     }
 }
 
-void RenderTabRect(int tab)
-{
-    
-    tft.FillRect(Rectangle(0, 0, 75, 6), tft_lib.tab == 0 ? COLOR_YELLOW : COLOR_GRAY);
-    tft.FillRect(Rectangle(82, 0, 75, 6), tft_lib.tab == 1 ? COLOR_YELLOW : COLOR_GRAY);
-    tft.FillRect(Rectangle(164, 0, 75, 6), tft_lib.tab == 2 ? COLOR_YELLOW : COLOR_GRAY);
-    tft.FillRect(Rectangle(245, 0, 75, 6), tft_lib.tab == 3 ? COLOR_YELLOW : COLOR_GRAY);
-    
-}
-
-void RenderAreaIndicator() 
-{
-    switch (tft_lib.tab)
-    {
-    case 0:
-        tft.FillRect(Rectangle(0, 145, 6, 38), tft_lib.area[tft_lib.tab] == 0 ? COLOR_YELLOW : COLOR_GRAY);
-        tft.FillRect(Rectangle(0, 190, 6, 38), tft_lib.area[tft_lib.tab] == 1 ? COLOR_YELLOW : COLOR_GRAY);
-    break;
-    case 1:
-        tft.FillRect(Rectangle(0, 20, 6, 52), tft_lib.area[tft_lib.tab] == 0 ? COLOR_YELLOW : COLOR_GRAY);
-        tft.FillRect(Rectangle(0, 80, 6, 52), tft_lib.area[tft_lib.tab] == 1 ? COLOR_YELLOW : COLOR_GRAY);
-        tft.FillRect(Rectangle(0, 140, 6, 52), tft_lib.area[tft_lib.tab] == 2 ? COLOR_YELLOW : COLOR_GRAY);
-    break;
-    case 2:
-        tft.FillRect(Rectangle(0, 20, 6, 84), tft_lib.area[tft_lib.tab] == 0 ? COLOR_YELLOW : COLOR_GRAY);
-    break;
-    case 3:
-        tft.FillRect(Rectangle(0, 30, 6, 34), tft_lib.area[tft_lib.tab] == 0 ? COLOR_YELLOW : COLOR_GRAY);
-        tft.FillRect(Rectangle(0, 74, 6, 41), tft_lib.area[tft_lib.tab] == 1 ? COLOR_YELLOW : COLOR_GRAY);
-        tft.FillRect(Rectangle(0, 124, 6, 41), tft_lib.area[tft_lib.tab] == 2 ? COLOR_YELLOW : COLOR_GRAY);
-        tft.FillRect(Rectangle(0, 174, 6, 41), tft_lib.area[tft_lib.tab] == 3 ? COLOR_YELLOW : COLOR_GRAY);
-    break;
-    default:
-        break;
-    }
-   
-    
-}
 
 void RenderTab1()
 {
@@ -1184,19 +1098,16 @@ void RenderTab2()
         tft_lib.RenderParam(1,0,1,paramTftValue[GW_OUT_LVL], "OUT LVL");
         tft_lib.RenderAreaInd(0,1);
         
-        //tft.WriteString("REVERB",20,20,Font_7x10,COLOR_WHITE);
         tft_lib.RenderParam(0,1,1,IsCvControlled(GW_RV_TIME) ? paramTftCvValue[GW_RV_TIME] : paramTftValue[GW_RV_TIME], "TIME");
         tft_lib.RenderParam(1,1,1,IsCvControlled(GW_RV_DAMP) ? paramTftCvValue[GW_RV_DAMP] : paramTftValue[GW_RV_DAMP], "DAMP");
         tft_lib.RenderParam(2,1,1,IsCvControlled(GW_RV_HPF) ? paramTftCvValue[GW_RV_HPF] : paramTftValue[GW_RV_HPF], "HPF");
         tft_lib.RenderAreaInd(1,1);
 
-        //tft.WriteString("LFO1",20,80,Font_7x10,COLOR_WHITE);
         tft_lib.RenderParamChar(0,2,1,IsCvControlled(GW_LFO_WAVE) ? paramTftCvValue[GW_LFO_WAVE] : paramTftValue[GW_LFO_WAVE], "WAVE",lfo_wave_labels);
         tft_lib.RenderParam(1,2,1,IsCvControlled(GW_LFO_SPEED) ? paramTftCvValue[GW_LFO_SPEED] : paramTftValue[GW_LFO_SPEED], "SPEED");
         tft_lib.RenderParamChar(2,2,1,IsCvControlled(GW_LFO_RANGE) ? paramTftCvValue[GW_LFO_RANGE] : paramTftValue[GW_LFO_RANGE], "RANGE",lfo_range_labels);
         tft_lib.RenderAreaInd(2,1);
 
-        //tft.WriteString("LFO2",20,140,Font_7x10,COLOR_WHITE);
         tft_lib.RenderParamChar(0,3,1,paramTftValue[GW_LFO2_WAVE], "WAVE",lfo_wave_labels);
         tft_lib.RenderParam(1,3,1,paramTftValue[GW_LFO2_SPEED], "SPEED");
         tft_lib.RenderParamChar(2,3,1,paramTftValue[GW_LFO2_RANGE], "RANGE",lfo_range_labels);
@@ -1210,8 +1121,8 @@ void RenderTab3()
         tft_lib.RenderTabRect(tft_lib.tab);
         tft.WriteString("WINDOW",20,20,Font_7x10,COLOR_WHITE);
         RenderWindow(20,35,paramTftValue[GW_WINDOW]);
-
-        RenderAreaIndicator();
+        tft_lib.RenderAreaInd(0,0,49);
+        
 
         tft.WriteString("CPU-AVG:",15,220,Font_7x10,COLOR_GRAY);
         tft.WriteString(GetIntAsString_(static_cast<int>(avg_cpu_*100.0)),70,220,Font_11x18,COLOR_GRAY);
@@ -1248,64 +1159,6 @@ void RenderTab4()
         tft_lib.RenderPotParam(3,paramTftPotValue[3],"DENSITY");
         
     }
-}
-void RenderSave()
-{
-    tft.WriteStringAligned("SAVE PRESET?",Font_11x18,Rectangle(0,80,320,34),Alignment::centered,COLOR_WHITE);
-    
-    tft.FillRect(Rectangle(0, 213, 75, 26), COLOR_BLUE);
-    tft.FillRect(Rectangle(245, 213, 75, 26), COLOR_RED);
-
-    tft.WriteStringAligned("YES",Font_7x10,Rectangle(0, 213, 75, 26),Alignment::centered,COLOR_WHITE);
-    tft.WriteStringAligned("NO",Font_7x10,Rectangle(245, 213, 75, 26),Alignment::centered,COLOR_WHITE);
-}
-
-void RenderRestore()
-{
-    tft.WriteStringAligned("RESTORE PRESET?",Font_11x18,Rectangle(0,80,320,34),Alignment::centered,COLOR_WHITE);
-    
-    tft.FillRect(Rectangle(0, 213, 75, 26), COLOR_BLUE);
-    tft.FillRect(Rectangle(245, 213, 75, 26), COLOR_RED);
-
-    tft.WriteStringAligned("YES",Font_7x10,Rectangle(0, 213, 75, 26),Alignment::centered,COLOR_WHITE);
-    tft.WriteStringAligned("NO",Font_7x10,Rectangle(245, 213, 75, 26),Alignment::centered,COLOR_WHITE);
-}
-
-void RenderCvSelector(int x, int y,int idx)
-{
-    int cvattPos = map_(cvAttValue_[idx],0,100,3,144);
-    //paramTftValue[GW_LFO2_SPEED]
-    tft.DrawRect(x,y,145,34,COLOR_WHITE);
-    tft.FillRect(Rectangle(x+1, y+1, 50, 33), COLOR_GRAY);
-    tft.DrawLine(x+50,y,x+50,y+34,COLOR_WHITE);
-    tft.WriteStringAligned(cv_labels[idx],Font_11x18,Rectangle(x+10,y+1,30,34),Alignment::centered,COLOR_WHITE);
-    tft.WriteStringAligned(cv_selector[cvSelValue_[idx]],Font_11x18,Rectangle(x+58,y+1,80,34),Alignment::centered,COLOR_YELLOW);
-    tft.DrawRect(x,y+34,145,7,COLOR_WHITE);
-    tft.FillRect(Rectangle(x+1, y+35, cvattPos, 6), COLOR_WHITE);
-}
-void RenderWavSelector(int x, int y,int idx)
-{
-    tft.DrawRect(x,y,300,34,COLOR_WHITE);
-    tft.FillRect(Rectangle(x+1, y+1, 50, 33), COLOR_GRAY);
-    tft.DrawLine(x+50,y,x+50,y+34,COLOR_WHITE);
-    tft.WriteStringAligned("WAV",Font_11x18,Rectangle(x+10,y+1,30,34),Alignment::centered,COLOR_WHITE);
-    if(idx < 0) {
-        tft.WriteStringAligned("---",Font_11x18,Rectangle(x+50,y+1,240,34),Alignment::centeredRight,COLOR_YELLOW);
-    } else {
-        tft.WriteStringAligned(filenames[idx].c_str(),Font_11x18,Rectangle(x+50,y+1,240,34),Alignment::centeredRight,COLOR_YELLOW);
-    }
-}
-void RenderLfoSelector(int x, int y,int idx)
-{
-    int lfoattPos = map_(lfoAttValue_[idx],0,100,3,144);    
-    
-    tft.DrawRect(x,y,145,34,COLOR_WHITE);
-    tft.FillRect(Rectangle(x+1, y+1, 50, 33), COLOR_GRAY);
-    tft.DrawLine(x+50,y,x+50,y+34,COLOR_WHITE);
-    tft.WriteStringAligned(lfo_labels[idx],Font_11x18,Rectangle(x+10,y+1,30,34),Alignment::centered,COLOR_WHITE);
-    tft.WriteStringAligned(cv_selector[lfoSelValue_[idx]],Font_11x18,Rectangle(x+58,y+1,80,34),Alignment::centered,COLOR_YELLOW);
-    tft.DrawRect(x,y+34,145,7,COLOR_WHITE);
-    tft.FillRect(Rectangle(x+1, y+35, lfoattPos, 6), COLOR_WHITE);
 }
 
 float getRndOct(float potvalue) {
@@ -1475,56 +1328,56 @@ void ReadSwitches()
                 }
                 else if(tft_lib.area[tft_lib.tab] == 1) {
                     if(i == 0) {
-                        cvSelValue_[i] += hw.enc[i].Increment();
-                        cvSelValue_[i] = clamp_int(cvSelValue_[i],0,kNumCvParams-1);
-                        paramTftValue[GW_CV1_TARGET] = cvSelValue_[i];
+                        paramTftValue[GW_CV1_TARGET] += hw.enc[i].Increment();
+                        paramTftValue[GW_CV1_TARGET] = clamp_int(paramTftValue[GW_CV1_TARGET],0,kNumCvParams-1);
+                        //paramTftValue[GW_CV1_TARGET] = cvSelValue_[i];
                     } else if(i == 2){
-                        cvSelValue_[i-1] += hw.enc[i].Increment();
-                        cvSelValue_[i-1] = clamp_int(cvSelValue_[i-1],0,kNumCvParams-1);
-                        paramTftValue[GW_CV2_TARGET] = cvSelValue_[i-1];
+                        paramTftValue[GW_CV2_TARGET] += hw.enc[i].Increment();
+                        paramTftValue[GW_CV2_TARGET] = clamp_int(paramTftValue[GW_CV2_TARGET],0,kNumCvParams-1);
+                        //paramTftValue[GW_CV2_TARGET] = cvSelValue_[i-1];
                     } else if(i == 1) {
-                        cvAttValue_[i-1] += hw.enc[i].Increment();
-                        cvAttValue_[i-1] = clamp_int(cvAttValue_[i-1],0,100);
-                        paramTftValue[GW_CV1_ATT] = cvAttValue_[i-1];
+                        paramTftValue[GW_CV1_ATT] += hw.enc[i].Increment();
+                        paramTftValue[GW_CV1_ATT] = clamp_int(paramTftValue[GW_CV1_ATT],0,100);
+                        //paramTftValue[GW_CV1_ATT] = cvAttValue_[i-1];
                     } else {
-                        cvAttValue_[i-2] += hw.enc[i].Increment();
-                        cvAttValue_[i-2] = clamp_int(cvAttValue_[i-2],0,100);
-                        paramTftValue[GW_CV2_ATT] = cvAttValue_[i-2];
+                        paramTftValue[GW_CV2_ATT] += hw.enc[i].Increment();
+                        paramTftValue[GW_CV2_ATT] = clamp_int(paramTftValue[GW_CV2_ATT],0,100);
+                        //paramTftValue[GW_CV2_ATT] = cvAttValue_[i-2];
                     }
                     
                 }
                 else if(tft_lib.area[tft_lib.tab] == 2) {
                     if(i == 0) {
-                        cvSelValue_[i+2] += hw.enc[i].Increment();
-                        cvSelValue_[i+2] = clamp_int(cvSelValue_[i+2],0,kNumCvParams-1);
-                        paramTftValue[GW_CV3_TARGET] = cvSelValue_[i+2];
+                        paramTftValue[GW_CV3_TARGET] += hw.enc[i].Increment();
+                        paramTftValue[GW_CV3_TARGET] = clamp_int(paramTftValue[GW_CV3_TARGET],0,kNumCvParams-1);
+                        //paramTftValue[GW_CV3_TARGET] = cvSelValue_[i+2];
                     } else if(i == 2){
                         
                     } else if(i == 1) {
-                        cvAttValue_[i+1] += hw.enc[i].Increment();
-                        cvAttValue_[i+1] = clamp_int(cvAttValue_[i+1],0,100);
-                        paramTftValue[GW_CV3_ATT] = cvAttValue_[i+1];
+                        paramTftValue[GW_CV3_ATT] += hw.enc[i].Increment();
+                        paramTftValue[GW_CV3_ATT] = clamp_int(paramTftValue[GW_CV3_ATT],0,100);
+                        //paramTftValue[GW_CV3_ATT] = cvAttValue_[i+1];
                     } else {
                         
                     }
                 }
                 else if(tft_lib.area[tft_lib.tab] == 3) {
                     if(i == 0) {
-                        lfoSelValue_[i] += hw.enc[i].Increment();
-                        lfoSelValue_[i] = clamp_int(lfoSelValue_[i],0,kNumCvParams-1);
-                        paramTftValue[GW_LFO1_TARGET] = lfoSelValue_[i];
+                        paramTftValue[GW_LFO1_TARGET] += hw.enc[i].Increment();
+                        paramTftValue[GW_LFO1_TARGET] = clamp_int(paramTftValue[GW_LFO1_TARGET],0,kNumCvParams-1);
+                        //paramTftValue[GW_LFO1_TARGET] = lfoSelValue_[i];
                     }  else if(i == 1) {
-                        lfoAttValue_[i-1] += hw.enc[i].Increment();
-                        lfoAttValue_[i-1] = clamp_int(lfoAttValue_[i-1],0,100);
-                        paramTftValue[GW_LFO1_ATT] = lfoAttValue_[i-1];
+                        paramTftValue[GW_LFO1_ATT] += hw.enc[i].Increment();
+                        paramTftValue[GW_LFO1_ATT] = clamp_int(paramTftValue[GW_LFO1_ATT],0,100);
+                        //paramTftValue[GW_LFO1_ATT] = lfoAttValue_[i-1];
                     } else if(i == 2) {
-                        lfoSelValue_[i-1] += hw.enc[i].Increment();
-                        lfoSelValue_[i-1] = clamp_int(lfoSelValue_[i-1],0,kNumCvParams-1);
-                        paramTftValue[GW_LFO2_TARGET] = lfoSelValue_[i-1];
+                        paramTftValue[GW_LFO2_TARGET] += hw.enc[i].Increment();
+                        paramTftValue[GW_LFO2_TARGET] = clamp_int(paramTftValue[GW_LFO2_TARGET],0,kNumCvParams-1);
+                        //paramTftValue[GW_LFO2_TARGET] = lfoSelValue_[i-1];
                     }  else if(i == 3) {
-                        lfoAttValue_[i-2] += hw.enc[i].Increment();
-                        lfoAttValue_[i-2] = clamp_int(lfoAttValue_[i-2],0,100);
-                        paramTftValue[GW_LFO2_ATT] = lfoAttValue_[i-2];
+                        paramTftValue[GW_LFO2_ATT] += hw.enc[i].Increment();
+                        paramTftValue[GW_LFO2_ATT] = clamp_int(paramTftValue[GW_LFO2_ATT],0,100);
+                        //paramTftValue[GW_LFO2_ATT] = lfoAttValue_[i-2];
                     }                    
                 }
             break;
@@ -1653,13 +1506,13 @@ float GetCvLfoValue(int param_idx) {
     float tmp_lfo[2] = {0,0};
 	for (int i = 0; i < hw.CV_LAST; i++)
 	{       
-        if(param_idx == cvSelValue_[i] && param_idx != 0 && cvAttValue_[i] > 0) {
-			tmp_cv[i] = (hw.GetCvValue(i) - cvOffsetValues_[i]) * (cvAttValue_[i] / 100.0);
+        if(param_idx == paramTftValue[GW_CV1_TARGET + i] && param_idx != 0 && paramTftValue[GW_CV1_ATT + i] > 0) {
+			tmp_cv[i] = (hw.GetCvValue(i) - cvOffsetValues_[i]) * (paramTftValue[GW_CV1_ATT + i] / 100.0);
 		}
 	}
     for (int i = 0; i < 2; i++) 
     {
-        if(param_idx == lfoSelValue_[i] && param_idx != 0) {
+        if(param_idx == paramTftValue[GW_LFO1_TARGET + i] && param_idx != 0) {
 			tmp_lfo[i] = lfo_val[i];
 		}
     }
@@ -1674,13 +1527,13 @@ void SetTftParamValue(int param_idx, float param_value) {
 bool IsCvControlled(int param_idx) {
     for (int i = 0; i < hw.CV_LAST; i++)
 	{
-		if(param_idx == cvSelValue_[i] && param_idx != 0) {
+		if(param_idx == paramTftValue[GW_CV1_TARGET + i] && param_idx != 0) {
 			return true;
 		}
 	}
     for (int i = 0; i < 2; i++)
     {
-        if(param_idx == lfoSelValue_[i] && param_idx != 0) {
+        if(param_idx == paramTftValue[GW_LFO1_TARGET + i] && param_idx != 0) {
 			return true;
 		}
     }
@@ -1712,26 +1565,6 @@ bool IsOct(int octval) {
     }
 }
 
-void RenderRotaryKnob_(int val, int minValue, int maxValue, int centerX, int centerY, int radius) {
-      
-    // Draw the outer circle of the slider
-    tft.DrawCircle(centerX, centerY, radius, COLOR_WHITE);
-    
-    
-    // Map the encoder value to an angle (0 to 360 degrees)
-    float angle = map_(val, minValue, maxValue, 135, 405);
-    // Convert angle to radians for trigonometric functions
-    float radians =   angle * (PI_F / 180);
-   
-    int line0AX = centerX + (radius - 0) * cos(radians);
-    int line0AY = centerY + (radius - 0) * sin(radians);
-
-    int line0BX = centerX + (radius - 5) * cos(radians);
-    int line0BY = centerY + (radius - 5) * sin(radians);
-
-    tft.DrawLine(line0AX,line0AY,line0BX,line0BY,COLOR_WHITE);
-   
-}
 
 void LoadPreset()
 {
@@ -1765,7 +1598,6 @@ void LoadPreset()
     paramTftValue[GW_LFO2_TARGET] = psettings.gw_lfo2_sel;
     paramTftValue[GW_LFO1_ATT] = psettings.gw_lfo1_att;
     paramTftValue[GW_LFO2_ATT] = psettings.gw_lfo2_att;
-    paramTftValue[GW_WAV_FILE] = paramWavVal;
 }
 
 void SavePreset()
@@ -1804,79 +1636,7 @@ void SavePreset()
     preset.SaveTheSettings();
 }
 
-void RenderTab1Row1() {
-    if(tft_lib.area[tft_lib.tab] < 2) {
-        //RenderParam(20, row1YT1, IsCvControlled(GW_COUNT) ? paramTftCvValue[GW_COUNT] : paramTftValue[GW_COUNT], "COUNT");
-        tft_lib.RenderParam(0,0,3,IsCvControlled(GW_COUNT) ? paramTftCvValue[GW_COUNT] : paramTftValue[GW_COUNT], "COUNT");
-        tft_lib.RenderParam(1,0,3,IsCvControlled(GW_SPLAY) ? paramTftCvValue[GW_SPLAY] : paramTftValue[GW_SPLAY], "SPLAY");
-        tft_lib.RenderParam(2,0,3,IsCvControlled(GW_JITTER) ? paramTftCvValue[GW_JITTER] : paramTftValue[GW_JITTER], "JITTER");
-        tft_lib.RenderParam(3,0,3,IsCvControlled(GW_SCAN_POSITION) ? paramTftCvValue[GW_SCAN_POSITION] : paramTftValue[GW_SCAN_POSITION], "SCAN");
-        //RenderParam(90, row1YT1, IsCvControlled(GW_SPLAY) ? paramTftCvValue[GW_SPLAY] : paramTftValue[GW_SPLAY], "SPLAY");
-        //RenderParam(160, row1YT1, IsCvControlled(GW_JITTER) ? paramTftCvValue[GW_JITTER] : paramTftValue[GW_JITTER], "JITTER");
-        //RenderParam(230, row1YT1, IsCvControlled(GW_SCAN_POSITION) ? paramTftCvValue[GW_SCAN_POSITION] : paramTftValue[GW_SCAN_POSITION], "SCAN");
 
-        tft.FillRect(Rectangle(0, row1YT1, 6, 38), tft_lib.area[tft_lib.tab] == 0 ? COLOR_YELLOW : COLOR_GRAY);
-    }
-}
-
-void RenderTab1Row2() {
-    if(tft_lib.area[tft_lib.tab] < 2) {
-        RenderParam(20, row2YT1, IsCvControlled(GW_RND_PAN) ? paramTftCvValue[GW_RND_PAN] : paramTftValue[GW_RND_PAN], "RND PAN");
-        RenderParam(90, row2YT1, IsCvControlled(GW_RND_OCT) ? paramTftCvValue[GW_RND_OCT] : paramTftValue[GW_RND_OCT], "RND OCT");
-        RenderParam(160, row2YT1, IsCvControlled(GW_REVERB) ? paramTftCvValue[GW_REVERB] : paramTftValue[GW_REVERB], "REVERB");
-
-        tft.FillRect(Rectangle(0, row2YT1, 6, 38), tft_lib.area[tft_lib.tab] == 1 ? COLOR_YELLOW : COLOR_GRAY);
-    }
-}
-
-void RenderTab1Row3() {
-    if(tft_lib.area[tft_lib.tab] > 1) {
-        RenderParam(20, row3YT1, paramTftValue[GW_IN_LVL], "IN LVL");
-        RenderParam(90, row3YT1, paramTftValue[GW_OUT_LVL], "OUT LVL");
-        tft.FillRect(Rectangle(0, row3YT1, 6, 38), tft_lib.area[tft_lib.tab] == 2 ? COLOR_YELLOW : COLOR_GRAY);
-    }
-}
-
-void RowTab1Y() {
-    switch (tft_lib.area[tft_lib.tab])
-    {
-    case 0:
-    case 1:
-        row1YT1 = 145;
-        row2YT1 = 190;
-        break;
-    case 2:
-        row3YT1 = 145;
-        break;
-    default:
-        break;
-    }
-}
-
-void RenderAreaArrow() {
-    switch (tft_lib.area[tft_lib.tab])
-    {
-    case 0:
-     case 1: 
-        tft.DrawLine(0,235,5,235,COLOR_YELLOW);
-        tft.DrawLine(1,236,4,236,COLOR_YELLOW);
-        tft.DrawLine(2,237,3,237,COLOR_YELLOW);
-        break;
-     case 2: 
-        tft.DrawLine(0,138,5,138,COLOR_YELLOW);
-        tft.DrawLine(1,137,4,137,COLOR_YELLOW);
-        tft.DrawLine(2,136,3,136,COLOR_YELLOW);
-        break;
-    default:
-        break;
-    }
-}
-
-void RenderSplash() {
-    tft.WriteStringAligned("WYATT",Font_16x26,Rectangle(0,30,320,34),Alignment::centered,COLOR_YELLOW);
-    tft.WriteStringAligned("grainstorm",Font_11x18,Rectangle(0,70,320,34),Alignment::centered,COLOR_YELLOW);
-    tft.WriteStringAligned(version,Font_11x18,Rectangle(0,110,320,34),Alignment::centered,COLOR_YELLOW);
-}
 void LoadCalibration(){
     const the_calibration &cvcal = preset.thecalibration();
     
