@@ -17,7 +17,6 @@
 - Micro SD Card
 - 20 HP
 <br/>
-<br/>
 
 ## Examples
 | Project name | Description | App type | Version |
