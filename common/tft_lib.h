@@ -38,6 +38,7 @@ class Tft_lib {
     void RenderLabel(int pos, int row, int rowOffset, const char *str1, TFT_COLOR bgColor = COLOR_GRAY,TFT_COLOR txtColor = COLOR_WHITE);
     void RenderSavePreset();
     void RenderRestorePreset();
+    void RenderSplash(const char *project_name, const char *version);
 
     char* GetIntAsString(int val);
     int map(int x, int in_min, int in_max, int out_min, int out_max);

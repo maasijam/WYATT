@@ -372,3 +372,9 @@ void Tft_lib::RenderLabel(int pos, int row, int rowOffset, const char *str, TFT_
     tft_->WriteStringAligned(str,Font_7x10,Rectangle(x,y+1,69,37),Alignment::centered, txtColor);
  
 }
+
+void Tft_lib::RenderSplash(const char *project_name, const char *version) {
+    tft_->WriteStringAligned("WYATT",Font_16x26,Rectangle(0,30,320,34),Alignment::centered,COLOR_YELLOW);
+    tft_->WriteStringAligned(project_name,Font_11x18,Rectangle(0,70,320,34),Alignment::centered,COLOR_YELLOW);
+    tft_->WriteStringAligned(version,Font_11x18,Rectangle(0,110,320,34),Alignment::centered,COLOR_YELLOW);
+}
