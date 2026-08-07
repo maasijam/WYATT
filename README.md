@@ -23,7 +23,7 @@
 | Project name | Description | App type |
 | ------------ | -------- | -----------|
 | [Grainstorm](Examples/grainstorm/) | Granular synth / effect | BOOT_SRAM |
-| hwtest | Wyatt Hardware test | BOOT_NONE |
+| [hwtest](Examples/hwtest/) | Wyatt Hardware test | BOOT_NONE |
 <br/>
 <br/>
 
