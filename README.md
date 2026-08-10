@@ -21,7 +21,7 @@
 ## Examples
 | Project name | Description | App type | Version |
 | ------------ | -------- | -----------| --------- |
-| [Grainstorm](Examples/grainstorm/) | Granular synth / effect | BOOT_SRAM | [grainstorm-0.1.bin](Examples/grainstorm/firmware/) |
+| [Grainstorm](Examples/grainstorm/) | Granular synth / effect | BOOT_SRAM | [grainstorm-0.2.bin](Examples/grainstorm/firmware/) |
 | [hwtest](Examples/hwtest/) | Wyatt Hardware test | BOOT_NONE | [hwtest-1.0.bin](Examples/hwtest/firmware/) |
 <br/>
 <br/>
