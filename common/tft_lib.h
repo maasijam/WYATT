@@ -17,7 +17,7 @@ class Tft_lib {
     Tft_lib() { }
     ~Tft_lib() { }
     void Init(ILI9341UiDriver* tft);    
-    
+
     void RenderTabRect(int tab);
     void RenderAreaInd(int row, int rowOffset, int heightAdd = 0);
     void RenderParamChar(int pos, int row, int rowOffset, int value, const char *str, const char** labels);
@@ -39,9 +39,15 @@ class Tft_lib {
     void RenderSavePreset();
     void RenderRestorePreset();
     void RenderSplash(const char *project_name, const char *version);
-
+    void RenderWindow(int pos, int row, int rowOffset, int value, const char *str); 
+    void RenderAudioMeter(int pos, int row, int rowOffset, int value, float left, float right, const char *str); 
+    float calculateBarWidth(float audioSample); 
+    float linearToNormalizedDb(float linear);
     char* GetIntAsString(int val);
     int map(int x, int in_min, int in_max, int out_min, int out_max);
+    float clamp(float x, float a, float b){return std::max(a,std::min(b,x));};
+    
+
 
     int tab = 0;
     int area[4] = {0,0,0,0};
@@ -50,9 +56,6 @@ class Tft_lib {
     ILI9341UiDriver* tft_;
 
     char val_str_[PARAM_BUFFER_SIZE];
-
-      
-    
 
     
 };

@@ -157,7 +157,7 @@ void Tft_lib::RenderBigBtn(int pos, int row, int rowOffset, bool encState, int a
 void Tft_lib::RenderPotParam(int pos, int value, const char *str) 
 {
     int x = 20 + (pos * 75);
-    int y = 213;
+    int y = 205;
     
     int paramPos = map(value,0,100,0,61);
     tft_->DrawRect(x,y,68,25,COLOR_WHITE);
@@ -172,7 +172,7 @@ void Tft_lib::RenderPotParam(int pos, int value, const char *str)
     if(pos == 0) {
 
     int centerX = 7;
-    int centerY = 225;
+    int centerY = 217;
     int radius = 7;
 
     tft_->DrawCircle(centerX, centerY, radius, COLOR_WHITE);
@@ -374,4 +374,118 @@ void Tft_lib::RenderSplash(const char *project_name, const char *version) {
     tft_->WriteStringAligned("WYATT",Font_16x26,Rectangle(0,30,320,34),Alignment::centered,COLOR_YELLOW);
     tft_->WriteStringAligned(project_name,Font_11x18,Rectangle(0,70,320,34),Alignment::centered,COLOR_YELLOW);
     tft_->WriteStringAligned(version,Font_11x18,Rectangle(0,110,320,34),Alignment::centered,COLOR_YELLOW);
+}
+
+void Tft_lib::RenderWindow(int pos, int row, int rowOffset, int value, const char *str) 
+{
+    int x = 20 + (pos * 75);
+    int y = 20 + ((row + rowOffset) * 45);
+    
+    int lineLeft = map(value,0,100,34,10);
+    int lineRight = map(value,0,100,34,58);
+
+    tft_->DrawRect(x,y,68,36,COLOR_WHITE);
+    tft_->FillRect(Rectangle(x + 1, y + 21, 67, 15), COLOR_YELLOW);
+    //tft_->DrawLine(x+1,y+20,67,y+21,COLOR_WHITE);
+    
+    tft_->DrawLine(x+5,y+35,x+lineLeft,y+23,COLOR_BLACK);
+    tft_->DrawLine(x+lineRight,y+23,x+63,y+35,COLOR_BLACK);
+    if(value > 0) {
+        tft_->DrawLine(x+lineLeft,y+23,x+lineRight,y+23,COLOR_BLACK);
+    }
+
+    tft_->WriteStringAligned(str,Font_7x10,Rectangle(x,y-1,68,26),Alignment::centered,COLOR_WHITE);
+}
+
+void Tft_lib::RenderAudioMeter(int pos, int row, int rowOffset, int value, float left, float right, const char *str) 
+{
+    int x = 20 + (pos * 75);
+    int y = 20 + ((row + rowOffset) * 45);
+    float scale = 1.8f;
+    TFT_COLOR color[2];
+    float meterpos[2];
+    //int paramPos = map_(value,0,100,0,53);
+    tft_->DrawRect(x,y,68,36,COLOR_WHITE);
+    tft_->DrawRect(x+68,y,225,36,COLOR_WHITE);
+    tft_->FillRect(Rectangle(x + 1, y + 21, 67, 15), COLOR_GRAY);
+	tft_->WriteStringAligned(GetIntAsString(value),Font_7x10,Rectangle(x+1,y+21,67,16),Alignment::centered,COLOR_WHITE);
+    tft_->WriteStringAligned(str,Font_7x10,Rectangle(x,y-1,68,26),Alignment::centered,COLOR_WHITE);
+
+    
+    
+    int totalPixels = 205;
+    float normalizedLeft = linearToNormalizedDb(left);
+    int litPixelsLeft = (int)(calculateBarWidth(normalizedLeft) * totalPixels * scale);
+    //int litPixelsLeft = (int)(calculateBarWidth(left) * totalPixels * scale);
+
+    for (int i = 0; i < litPixelsLeft; i++) {
+        meterpos[0] = (float)i / (float)totalPixels; // 0.0 .. 1.0
+        if (meterpos[0] < 0.70f) {
+            color[0] = COLOR_GREEN;
+        } else if (meterpos[0] < 0.90f) {
+            color[0] = COLOR_YELLOW;
+        } else {
+            color[0] = COLOR_RED;
+        }
+        
+        tft_->DrawLine(x + 78 + i, y + 6, x + 78 + i, y + 16, color[0]);
+    }
+
+    float normalizedRight = linearToNormalizedDb(right);
+    int litPixelsRight = (int)(calculateBarWidth(normalizedRight) * totalPixels * scale);
+
+    for (int i = 0; i < litPixelsRight; i++) {
+        meterpos[1] = (float)i / (float)totalPixels; // 0.0 .. 1.0
+        if (meterpos[1] < 0.70f) {
+            color[1] = COLOR_GREEN;
+        } else if (meterpos[1] < 0.90f) {
+            color[1] = COLOR_YELLOW;
+        } else {
+            color[1] = COLOR_RED;
+        }
+        
+        tft_->DrawLine(x + 78 + i, y + 21, x + 78 + i, y + 31, color[1]);
+    }
+    
+}
+
+float Tft_lib::calculateBarWidth(float audioSample) {
+        
+        float level_ = 0.0f;
+        float attackCoeff_  = 0.5f; 
+        float releaseCoeff_ = 0.05f;
+        int clipHoldCounter_ = 0;
+        const int clipHoldFrames_ = 20;
+
+        float absVal = fabsf(audioSample);
+        if (absVal > 1.0f) absVal = 1.0f;
+
+        if (absVal > level_) {
+            // Attack: schnell ansteigen
+            level_ = level_ + (absVal - level_) * attackCoeff_;
+        } else {
+            // Release: langsam abfallen
+            level_ = level_ + (absVal - level_) * releaseCoeff_;
+        }
+
+        // Übersteuerungs-Erkennung (Clip-Hold)
+        if (absVal >= 0.999f) {
+            clipHoldCounter_ = clipHoldFrames_;
+        } else if (clipHoldCounter_ > 0) {
+            clipHoldCounter_--;
+        }
+
+        return level_;
+    }
+
+float Tft_lib::linearToNormalizedDb(float linear) {
+    float minDb_ = -40.0f;  // "leise" -> unteres Ende der Anzeige
+    float maxDb_ = 0.0f;    
+    if (linear < 0.00001f) linear = 0.00001f; // -100dB Untergrenze, verhindert log(0)
+
+    float db = 20.0f * log10f(linear);        // linear -> dB
+    db = clamp(db, minDb_, maxDb_);
+
+    float normalized = (db - minDb_) / (maxDb_ - minDb_);
+    return normalized;
 }
