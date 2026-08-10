@@ -45,7 +45,7 @@ void Tft_lib::RenderParamNoteChar(int pos, int row, int rowOffset, int value, co
     const char *label;
     const char *octave = GetIntAsString(value / noteSize);
     int labelValue = value % noteSize;
-    //label = labels[value];
+
     label = labels[scale[labelValue]];
     int x = 20 + (pos * 75);
     int y = 20 + ((row + rowOffset) * 45);
@@ -64,11 +64,10 @@ void Tft_lib::RenderParamIntToStr(int pos, int row, int rowOffset, int value, co
 {
     int x = 20 + (pos * 75);
     int y = 20 + ((row + rowOffset) * 45);
-    //int paramPos = map_(value,0,100,0,53);
+
     tft_->DrawRect(x,y,68,36,COLOR_WHITE);
     tft_->FillRect(Rectangle(x + 1, y + 21, 67, 15), COLOR_GRAY);
 	tft_->WriteStringAligned(GetIntAsString(value),Font_7x10,Rectangle(x+1,y+21,67,16),Alignment::centered,COLOR_WHITE);
-    //tft.FillRect(Rectangle(x + 1 + paramPos, y + 22, 6, 14), COLOR_BLACK);
     tft_->WriteStringAligned(str,Font_7x10,Rectangle(x,y-1,68,26),Alignment::centered,COLOR_WHITE);
 }
 
@@ -76,7 +75,7 @@ void Tft_lib::RenderParamSw(int pos, int row, int rowOffset, bool value, const c
 {
     int x = 20 + (pos * 75);
     int y = 20 + ((row + rowOffset) * 45);
-    //int paramPos = map_(value,0,100,0,53);
+
     tft_->DrawRect(x,y,68,36,COLOR_WHITE);
     
 	if(value) {
@@ -100,9 +99,7 @@ void Tft_lib::RenderPadParam(int pos, int row, int rowOffset, int value, int idx
     tft_->DrawRect(x,y,68,36,COLOR_WHITE);
     tft_->FillRect(Rectangle(x + 1, y + 21, 67, 15), COLOR_YELLOW);
     tft_->FillRect(Rectangle(x + 1 + paramPos, y + 22, 6, 14), COLOR_BLACK);
-    //if(drumGate[idx]) {
-    //    tft.FillRect(Rectangle(x + 1, y + 1, 59, 33), COLOR_BLUE);
-    //}
+
     tft_->WriteStringAligned(str,Font_7x10,Rectangle(x,y-1,68,24),Alignment::centered,COLOR_WHITE);
 }
 
@@ -121,12 +118,9 @@ void Tft_lib::RenderBigBtn(int pos, int row, int rowOffset, bool encState, int a
 {
     int x = 20 + (pos * 75);
     int y = 20 + ((row + rowOffset) * 45);
-    //tft.DrawRect(x,y,60,30,COLOR_WHITE);
+
     tft_->FillRect(Rectangle(x, y, 69, 37), encState && cur_area == area ? COLOR_YELLOW : COLOR_GRAY);
-    //tft.FillRect(Rectangle(x + 1 + paramPos, y + 21, 6, 9), COLOR_BLACK);
-    //if(drumGate[idx]) {
-    //    tft.FillRect(Rectangle(x + 1, y + 1, 59, 33), COLOR_BLUE);
-    //}
+
     tft_->WriteStringAligned(str1,Font_7x10,Rectangle(x,y+1,69,19),Alignment::centered, encState && cur_area == area ? COLOR_BLACK : COLOR_WHITE);
     tft_->WriteStringAligned(str2,Font_7x10,Rectangle(x,y+19,69,19),Alignment::centered, encState && cur_area == area ? COLOR_BLACK : COLOR_WHITE);
     tft_->DrawPixel(x,y,COLOR_BLACK);
@@ -165,10 +159,6 @@ void Tft_lib::RenderPotParam(int pos, int value, const char *str)
     tft_->FillRect(Rectangle(x + 1 + paramPos, y + 19, 6, 6), COLOR_BLACK);
     tft_->WriteStringAligned(str,Font_7x10,Rectangle(x,y,68,21),Alignment::centered,COLOR_WHITE);
 
-    
-    
-    //(int val, int minValue, int maxValue, int centerX, int centerY, int radius)
-    //(50, 0, 100, 7, 225, 7)
     if(pos == 0) {
 
     int centerX = 7;
@@ -228,7 +218,6 @@ void Tft_lib::RenderWavSelector(int pos, int row, int rowOffset,int wavVal, cons
 void Tft_lib::RenderRowDrumHeader(int x, int y, bool drumGate, bool drumGateEnc, const char *str) 
 {
     
-    //tft.DrawRect(x,y,60,18,COLOR_WHITE);
     tft_->FillRect(Rectangle(x , y , 59, 16), COLOR_GRAY);
     tft_->DrawLine(x,y+15,x+270,y+15,COLOR_GRAY); 
     tft_->WriteStringAligned(str,Font_7x10,Rectangle(x,y-1,60,20),Alignment::centered,COLOR_WHITE);
@@ -338,7 +327,6 @@ int Tft_lib::map(int x, int in_min, int in_max, int out_min, int out_max) {
 void Tft_lib::RenderSavePreset()
 {
     tft_->WriteStringAligned("SAVE PRESET?",Font_11x18,Rectangle(0,80,320,34),Alignment::centered,COLOR_WHITE);
-    //tft.WriteStringAligned("YES (FUNC) --- NO (SHIFT)",Font_11x18,Rectangle(0,70,320,34),Alignment::centered,COLOR_YELLOW);
     
     tft_->FillRect(Rectangle(0, 213, 75, 26), COLOR_BLUE);
     tft_->FillRect(Rectangle(245, 213, 75, 26), COLOR_RED);
@@ -365,7 +353,6 @@ void Tft_lib::RenderLabel(int pos, int row, int rowOffset, const char *str, TFT_
     int y = 20 + ((row + rowOffset) * 45);
 
     tft_->FillRect(Rectangle(x, y, 69, 37), bgColor);
-    //tft_->WriteStringAligned(str,Font_7x10,Rectangle(x,y+1,69,37),Alignment::centered, txtColor);
     tft_->WriteStringAligned(str,Font_7x10,Rectangle(x,y+1,69,37),Alignment::centered, txtColor);
  
 }
@@ -386,7 +373,6 @@ void Tft_lib::RenderWindow(int pos, int row, int rowOffset, int value, const cha
 
     tft_->DrawRect(x,y,68,36,COLOR_WHITE);
     tft_->FillRect(Rectangle(x + 1, y + 21, 67, 15), COLOR_YELLOW);
-    //tft_->DrawLine(x+1,y+20,67,y+21,COLOR_WHITE);
     
     tft_->DrawLine(x+5,y+35,x+lineLeft,y+23,COLOR_BLACK);
     tft_->DrawLine(x+lineRight,y+23,x+63,y+35,COLOR_BLACK);
@@ -404,7 +390,7 @@ void Tft_lib::RenderAudioMeter(int pos, int row, int rowOffset, int value, float
     float scale = 1.8f;
     TFT_COLOR color[2];
     float meterpos[2];
-    //int paramPos = map_(value,0,100,0,53);
+
     tft_->DrawRect(x,y,68,36,COLOR_WHITE);
     tft_->DrawRect(x+68,y,225,36,COLOR_WHITE);
     tft_->FillRect(Rectangle(x + 1, y + 21, 67, 15), COLOR_GRAY);
@@ -416,7 +402,6 @@ void Tft_lib::RenderAudioMeter(int pos, int row, int rowOffset, int value, float
     int totalPixels = 205;
     float normalizedLeft = linearToNormalizedDb(left);
     int litPixelsLeft = (int)(calculateBarWidth(normalizedLeft) * totalPixels * scale);
-    //int litPixelsLeft = (int)(calculateBarWidth(left) * totalPixels * scale);
 
     for (int i = 0; i < litPixelsLeft; i++) {
         meterpos[0] = (float)i / (float)totalPixels; // 0.0 .. 1.0

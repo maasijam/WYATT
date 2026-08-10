@@ -17,7 +17,7 @@ using namespace std;
 using namespace settings;
 using namespace tftlib;
 
-const char* version = "v 0.1";
+const char* version = "v 0.2";
 const char* project_name = "Grainstorm";
 
 
@@ -41,6 +41,7 @@ enum gw_params
     GW_SCAN_POSITION,
 	GW_RND_PAN,
 	GW_RND_OCT,
+    GW_WINDOW,
     GW_REVERB,
 	GW_RV_TIME,
 	GW_RV_DAMP,
@@ -48,7 +49,6 @@ enum gw_params
 	GW_LFO_WAVE,
 	GW_LFO_SPEED,
 	GW_LFO_RANGE,
-    GW_WINDOW,
     GW_LFO2_WAVE,
 	GW_LFO2_SPEED,
 	GW_LFO2_RANGE,
@@ -73,6 +73,7 @@ enum CharSet {
     LFO_RANGE,
     CHAR_SET_LAST
 };
+
 
 
 const int RECORDING_XFADE_OVERLAP = 100; // Samples
@@ -184,7 +185,7 @@ void RenderWindow(int x, int y, int value);
 void RenderCalibration();
 float GetLfoFreq(int range, float speed);
 
-int wav_y = 15;
+int wav_y = 5;
 int encScale_ = 1;
 
 float getRndOct(float potvalue);
@@ -209,7 +210,7 @@ const char* lfo_labels[2] = {"LFO1","LFO2"};
 const char* lfo_wave_labels[10] = {"SINE","TRI","SAW","RAMP","SQR","SMOO","RND","PTRI","PSAW","PSQR"};
 const char* lfo_range_labels[3] = {"SLOW","MED","FAST"};
 
-const char* page2_tab_labels[4] = {"LEVEL","REVERB","LFO1","LFO2"};
+const char* page2_tab_labels[3] = {"REVERB","LFO1","LFO2"};
 
 // Performance metrics.
 CpuLoadMeter cpu_load_meter;
@@ -237,6 +238,8 @@ int calibrationLoader = 0;
 
 const uint8_t write_head_indicator_height = 10;
 const uint8_t write_head_indicator_width = 9;
+
+uint8_t debug;
 
 class ControlHandler
 {
@@ -318,16 +321,18 @@ inline size_t get_spawn_position(int index) {
     return fwrap(unwrapped_spawn_position, 0.f, recording_length);
 }
 
-void draw_recorded_waveform() {
+void draw_recorded_waveform(int width = 320, int height = 128) {
     uint8_t last_amplitude = 0;
+    float fheight = height * 1.f;
     // Traversing backwards stops the leading wave of recording
     // affecting values infront of it due to how the smoothing filter works
+    tft.DrawLine(0,(height/2)+1+wav_y,width,(height/2)+1+wav_y,COLOR_GRAY);
 
-    for (int x = 320 - 1; x >= 0; x--) {
-        size_t renderable_recording_index = (x / (float)320) * RENDERABLE_RECORDING_BUFFER_SIZE;
+    for (int x = width - 1; x >= 0; x--) {
+        size_t renderable_recording_index = (x / (float)width) * RENDERABLE_RECORDING_BUFFER_SIZE;
 
-        uint8_t amplitude = min(128.f, (renderable_recording[renderable_recording_index] / 0.1f * 128) * out_lvl_val.value);
-
+        uint8_t amplitude = min(fheight, (renderable_recording[renderable_recording_index] / 0.38f * (height)) * out_lvl_val.value);
+        
         // Smooth out the waveform
         // TODO: Smooth differently, this produces weird classic LPF shapes
         if (x > 0) {
@@ -335,23 +340,23 @@ void draw_recorded_waveform() {
         }
         last_amplitude = amplitude;
 
-        uint8_t margin = (128 - amplitude) / 2;
+        uint8_t margin = (height - amplitude) / 2;
         if(amplitude > 0) {
+            for (uint8_t y = margin; y < height - margin; y++) {
+                tft.DrawPixel(x, y + wav_y, COLOR_GRAY);
+            }
+        }
+    } 
 
-        for (uint8_t y = margin; y < 128 - margin; y++) {
-            tft.DrawPixel(x, y + wav_y, COLOR_GRAY);
-        }
-        }
-    }   
 }
 
-void draw_write_head_indicator() {
+void draw_write_head_indicator(int width = 320, int height = 128) {
     // Write head indicator
-    uint16_t write_head_screen_x = ((write_head / (float)RECORDING_BUFFER_SIZE) * 320 - 1);
+    uint16_t write_head_screen_x = ((write_head / (float)RECORDING_BUFFER_SIZE) * width - 1);
     for (int x = 0; x < write_head_indicator_width; x++) {
         for (int y = 0; y < write_head_indicator_height+2; y++) {
-            uint16_t screen_x = wrap(x + write_head_screen_x - write_head_indicator_width / 2, 0, 320);
-            uint16_t screen_y = wrap(y + 69 +wav_y - write_head_indicator_height, 0, 128);
+            uint16_t screen_x = wrap(x + write_head_screen_x - write_head_indicator_width / 2, 0, width);
+            uint16_t screen_y = wrap(y + (height/2) +wav_y - 5, 0, height);
 
             if (is_recording) {
                 tft.DrawPixel(screen_x, screen_y, COLOR_RED);
@@ -360,36 +365,36 @@ void draw_write_head_indicator() {
             }
         }
     }
-    tft.DrawLine(write_head_screen_x,12+wav_y,write_head_screen_x,115+wav_y,is_recording ? COLOR_RED : IsOct(oct_val) ? COLOR_YELLOW : COLOR_BLUE);
+    tft.DrawLine(write_head_screen_x,12+wav_y,write_head_screen_x,(height-13)+wav_y,is_recording ? COLOR_RED : IsOct(oct_val) ? COLOR_YELLOW : COLOR_BLUE);
 }
 
-void draw_grain_spawn_positions() {
+void draw_grain_spawn_positions(int width = 320, int height = 128) {
     // Grain start offset
     uint8_t y_margin = 8;
 
     for (int i = 0; i < (int)spawn_positions_count; i++) {
-        float spawn_position_x = get_spawn_position(i) / (float)recording_length * 320;
+        float spawn_position_x = get_spawn_position(i) / (float)recording_length * width;
         
-        for (uint8_t y = y_margin; y < 128 - y_margin; y++) {
+        for (uint8_t y = y_margin; y < height - y_margin; y++) {
             tft.DrawPixel(spawn_position_x, y + wav_y, COLOR_BLUE);
         }
     }
 }
 
 
-void draw_grains() {
+void draw_grains(int width = 320, int height = 128) {
     // Grains
     for (int j = 0; j < MAX_GRAIN_COUNT; j++) {
         Grain grain = grains[j];
 
         if (grain.step <= grain.length) {
-            uint8_t y = grain.pan * 128;
+            uint8_t y = grain.pan * height;
             uint32_t current_offset = wrap(grain.spawn_position + grain.step * grains[j].playback_speed, 0, recording_length);
-            uint16_t x = (current_offset / (float)recording_length) * 320;
+            uint16_t x = (current_offset / (float)recording_length) * width;
 
             tft.DrawPixel(x, y + wav_y, COLOR_ORANGE);
-            tft.DrawPixel((x + 1) % 320, y + wav_y, COLOR_CYAN);
-            tft.DrawPixel((x + 2) % 320, y + wav_y, COLOR_DARK_GREEN);
+            tft.DrawPixel((x + 1) % width, y + wav_y, COLOR_CYAN);
+            tft.DrawPixel((x + 2) % width, y + wav_y, COLOR_DARK_GREEN);
         }
     }
 }
@@ -700,6 +705,7 @@ void record_sample(float sample) {
 }
 
 void record_sample_for_display(float sample) {
+    //debug = static_cast<uint8_t>(abs(sample) * 100);
     // TODO: Record positive and negative values seperately
     size_t renderable_recording_index = write_head * RECORDING_TO_RENDERABLE_RECORDING_BUFFER_RATIO;
 
@@ -740,7 +746,6 @@ void calculate_audio_out(float in_l, float in_r, float &out_l, float &out_r) {
             float decimal_portion = modf(grains[j].step * grains[j].playback_speed);
             float interpolated_sample = sample * (1 - decimal_portion) + next_sample * decimal_portion;
 
-            //float signal = 0.f;
             float vol = 0.5f;
             kFadeLength = ((((grains[j].length / 2) - kFadeLengthMin) * (100-paramTftValue[GW_WINDOW]))/100) + kFadeLengthMin; 
             if (grains[j].step <= kFadeLength) {
@@ -771,8 +776,6 @@ void calculate_audio_out(float in_l, float in_r, float &out_l, float &out_r) {
     hpf_r.Process(reverb_wet_r);
     out_l = (reverb_in_l + (hpf_l.High() * reverb_wet_mix) + (in_l * in_lvl_val.value)) * out_lvl_val.value;
     out_r = (reverb_in_r + (hpf_r.High() * reverb_wet_mix) + (in_r * in_lvl_val.value)) * out_lvl_val.value;
-
-
 }
 
 void init() {
@@ -799,7 +802,9 @@ void init() {
     paramTftValue[GW_WAV_FILE] = paramWavVal;
     
 }
-
+volatile float g_currentPeakInLeft = 0.0f;
+volatile float g_currentPeakOutLeft = 0.0f;
+volatile float g_currentPeakOutRight = 0.0f;
 
 void AudioCallback(
     AudioHandle::InputBuffer  in,
@@ -809,6 +814,10 @@ void AudioCallback(
     cpu_load_meter.OnBlockStart();
 	droppedFrames++;
 
+    float blockPeakInLeft = 0.0f;
+    float blockPeakOutLeft = 0.0f;
+    float blockPeakOutRight = 0.0f;
+
     process_controls();
 
     // Process audio output
@@ -816,12 +825,16 @@ void AudioCallback(
     {
         OUT_L[i] = 0.f;
         OUT_R[i] = 0.f;
+
+        
+        float absValInLeft = fabsf(IN_L[i]); // Kanal 0, ggf. anpassen
+        if (absValInLeft > blockPeakInLeft) blockPeakInLeft = absValInLeft;
         
         if(!loadSample) {
         
             if (is_recording) {
-                record_sample(IN_L[i] * in_lvl_val.value);
-                record_sample_for_display(IN_L[i] * in_lvl_val.value);
+                record_sample(IN_L[i] * in_lvl_val.value * 1.75f);
+                record_sample_for_display(IN_L[i] * in_lvl_val.value * 1.75f);
             } 
 
             // Progresses the write head regardless of if we're recording
@@ -857,7 +870,16 @@ void AudioCallback(
             spawn_position_offset = fwrap(spawn_position_offset, 0, RECORDING_BUFFER_SIZE);
             
         }
+
+        float absValOutLeft = fabsf(OUT_L[i]); // Kanal 0, ggf. anpassen
+        if (absValOutLeft > blockPeakOutLeft) blockPeakOutLeft = absValOutLeft;
+        float absValOutRight = fabsf(OUT_R[i]); // Kanal 0, ggf. anpassen
+        if (absValOutRight > blockPeakOutRight) blockPeakOutRight = absValOutRight;
     }
+
+    g_currentPeakInLeft = blockPeakInLeft * in_lvl_val.value;
+    g_currentPeakOutLeft = blockPeakOutLeft;
+    g_currentPeakOutRight = blockPeakOutRight;
     
     cpu_load_meter.OnBlockEnd();
 	droppedFrames--;
@@ -1046,22 +1068,28 @@ void RenderTab1()
 {
     if(tft_lib.tab == 0) {
         tft_lib.RenderTabRect(tft_lib.tab);
-        tft.DrawLine(0,65+wav_y,320,65+wav_y,COLOR_GRAY);
-        draw_recorded_waveform();
-        draw_write_head_indicator();
-        draw_grain_spawn_positions();
-        draw_grains();
+    
+        draw_recorded_waveform(320,106);
+        draw_write_head_indicator(320,106);
+        draw_grain_spawn_positions(320,106);
+        draw_grains(320,106);
 
-        tft_lib.RenderParam(0,0,3,IsCvControlled(GW_COUNT) ? paramTftCvValue[GW_COUNT] : paramTftValue[GW_COUNT], "COUNT");
-        tft_lib.RenderParam(1,0,3,IsCvControlled(GW_SPLAY) ? paramTftCvValue[GW_SPLAY] : paramTftValue[GW_SPLAY], "SPLAY");
-        tft_lib.RenderParam(2,0,3,IsCvControlled(GW_JITTER) ? paramTftCvValue[GW_JITTER] : paramTftValue[GW_JITTER], "JITTER");
-        tft_lib.RenderParam(3,0,3,IsCvControlled(GW_SCAN_POSITION) ? paramTftCvValue[GW_SCAN_POSITION] : paramTftValue[GW_SCAN_POSITION], "SCAN");
-        tft_lib.RenderAreaInd(0,3);
+        tft_lib.RenderParam(0,0,2,IsCvControlled(GW_COUNT) ? paramTftCvValue[GW_COUNT] : paramTftValue[GW_COUNT], "COUNT");
+        tft_lib.RenderParam(1,0,2,IsCvControlled(GW_SPLAY) ? paramTftCvValue[GW_SPLAY] : paramTftValue[GW_SPLAY], "SPLAY");
+        tft_lib.RenderParam(2,0,2,IsCvControlled(GW_JITTER) ? paramTftCvValue[GW_JITTER] : paramTftValue[GW_JITTER], "JITTER");
+        tft_lib.RenderParam(3,0,2,IsCvControlled(GW_SCAN_POSITION) ? paramTftCvValue[GW_SCAN_POSITION] : paramTftValue[GW_SCAN_POSITION], "SCAN");
+        tft_lib.RenderAreaInd(0,2);
 
-        tft_lib.RenderParam(0,1,3,IsCvControlled(GW_RND_PAN) ? paramTftCvValue[GW_RND_PAN] : paramTftValue[GW_RND_PAN], "RND PAN");
-        tft_lib.RenderParam(1,1,3,IsCvControlled(GW_RND_OCT) ? paramTftCvValue[GW_RND_OCT] : paramTftValue[GW_RND_OCT], "RND OCT");
-        tft_lib.RenderParam(2,1,3,IsCvControlled(GW_REVERB) ? paramTftCvValue[GW_REVERB] : paramTftValue[GW_REVERB], "REVERB");
-        tft_lib.RenderAreaInd(1,3);   
+        tft_lib.RenderParam(0,1,2,IsCvControlled(GW_RND_PAN) ? paramTftCvValue[GW_RND_PAN] : paramTftValue[GW_RND_PAN], "RND PAN");
+        tft_lib.RenderParam(1,1,2,IsCvControlled(GW_RND_OCT) ? paramTftCvValue[GW_RND_OCT] : paramTftValue[GW_RND_OCT], "RND OCT");
+        tft_lib.RenderWindow(2,1,2,paramTftValue[GW_WINDOW],"WINDOW");
+        tft_lib.RenderParam(3,1,2,IsCvControlled(GW_REVERB) ? paramTftCvValue[GW_REVERB] : paramTftValue[GW_REVERB], "REVERB");
+        tft_lib.RenderAreaInd(1,2);   
+
+        tft_lib.RenderPotParam(0,paramTftPotValue[0],"PITCH");
+        tft_lib.RenderPotParam(1,paramTftPotValue[1],"LENGTH");
+        tft_lib.RenderPotParam(2,paramTftPotValue[2],"POSITION");
+        tft_lib.RenderPotParam(3,paramTftPotValue[3],"DENSITY");
             
     }
 }
@@ -1070,37 +1098,39 @@ void RenderTab2()
     if(tft_lib.tab == 1) {
         tft_lib.RenderTabRect(tft_lib.tab);
         
-        tft_lib.RenderRowTabHeader(tft_lib.area[tft_lib.tab],page2_tab_labels,4);
-
-        tft_lib.RenderParam(0,0,1,paramTftValue[GW_IN_LVL], "IN LVL");
-        tft_lib.RenderParam(1,0,1,paramTftValue[GW_OUT_LVL], "OUT LVL");
-        tft_lib.RenderAreaInd(0,1);
+        tft_lib.RenderRowTabHeader(tft_lib.area[tft_lib.tab],page2_tab_labels,3);
         
-        tft_lib.RenderParam(0,1,1,IsCvControlled(GW_RV_TIME) ? paramTftCvValue[GW_RV_TIME] : paramTftValue[GW_RV_TIME], "TIME");
-        tft_lib.RenderParam(1,1,1,IsCvControlled(GW_RV_DAMP) ? paramTftCvValue[GW_RV_DAMP] : paramTftValue[GW_RV_DAMP], "DAMP");
-        tft_lib.RenderParam(2,1,1,IsCvControlled(GW_RV_HPF) ? paramTftCvValue[GW_RV_HPF] : paramTftValue[GW_RV_HPF], "HPF");
+        tft_lib.RenderParam(0,0,1,IsCvControlled(GW_RV_TIME) ? paramTftCvValue[GW_RV_TIME] : paramTftValue[GW_RV_TIME], "TIME");
+        tft_lib.RenderParam(1,0,1,IsCvControlled(GW_RV_DAMP) ? paramTftCvValue[GW_RV_DAMP] : paramTftValue[GW_RV_DAMP], "DAMP");
+        tft_lib.RenderParam(2,0,1,IsCvControlled(GW_RV_HPF) ? paramTftCvValue[GW_RV_HPF] : paramTftValue[GW_RV_HPF], "HPF");
+        tft_lib.RenderAreaInd(0,1);
+
+        tft_lib.RenderParamChar(0,1,1,IsCvControlled(GW_LFO_WAVE) ? paramTftCvValue[GW_LFO_WAVE] : paramTftValue[GW_LFO_WAVE], "WAVE",lfo_wave_labels);
+        tft_lib.RenderParam(1,1,1,IsCvControlled(GW_LFO_SPEED) ? paramTftCvValue[GW_LFO_SPEED] : paramTftValue[GW_LFO_SPEED], "SPEED");
+        tft_lib.RenderParamChar(2,1,1,IsCvControlled(GW_LFO_RANGE) ? paramTftCvValue[GW_LFO_RANGE] : paramTftValue[GW_LFO_RANGE], "RANGE",lfo_range_labels);
         tft_lib.RenderAreaInd(1,1);
 
-        tft_lib.RenderParamChar(0,2,1,IsCvControlled(GW_LFO_WAVE) ? paramTftCvValue[GW_LFO_WAVE] : paramTftValue[GW_LFO_WAVE], "WAVE",lfo_wave_labels);
-        tft_lib.RenderParam(1,2,1,IsCvControlled(GW_LFO_SPEED) ? paramTftCvValue[GW_LFO_SPEED] : paramTftValue[GW_LFO_SPEED], "SPEED");
-        tft_lib.RenderParamChar(2,2,1,IsCvControlled(GW_LFO_RANGE) ? paramTftCvValue[GW_LFO_RANGE] : paramTftValue[GW_LFO_RANGE], "RANGE",lfo_range_labels);
+        tft_lib.RenderParamChar(0,2,1,paramTftValue[GW_LFO2_WAVE], "WAVE",lfo_wave_labels);
+        tft_lib.RenderParam(1,2,1,paramTftValue[GW_LFO2_SPEED], "SPEED");
+        tft_lib.RenderParamChar(2,2,1,paramTftValue[GW_LFO2_RANGE], "RANGE",lfo_range_labels);
         tft_lib.RenderAreaInd(2,1);
-
-        tft_lib.RenderParamChar(0,3,1,paramTftValue[GW_LFO2_WAVE], "WAVE",lfo_wave_labels);
-        tft_lib.RenderParam(1,3,1,paramTftValue[GW_LFO2_SPEED], "SPEED");
-        tft_lib.RenderParamChar(2,3,1,paramTftValue[GW_LFO2_RANGE], "RANGE",lfo_range_labels);
-        tft_lib.RenderAreaInd(3,1);
 
     }
 }
 void RenderTab3()
 {
+    
     if(tft_lib.tab == 2) {
+        float levelFactor = 6.f;
         tft_lib.RenderTabRect(tft_lib.tab);
-        tft.WriteString("WINDOW",20,20,Font_7x10,COLOR_WHITE);
-        RenderWindow(20,35,paramTftValue[GW_WINDOW]);
-        tft_lib.RenderAreaInd(0,0,49);
         
+        tft_lib.RenderAudioMeter(0,0,0,paramTftValue[GW_IN_LVL],g_currentPeakInLeft*levelFactor,g_currentPeakInLeft*levelFactor,"IN LVL");
+        tft_lib.RenderAreaInd(0,0);
+
+        tft_lib.RenderAudioMeter(0,1,0,paramTftValue[GW_OUT_LVL],g_currentPeakOutLeft*levelFactor,g_currentPeakOutRight*levelFactor,"OUT LVL");
+        tft_lib.RenderAreaInd(1,0);
+
+        //tft.WriteString(GetIntAsString_(debug),15,190,Font_11x18,COLOR_RED);
 
         tft.WriteString("CPU-AVG:",15,220,Font_7x10,COLOR_GRAY);
         tft.WriteString(GetIntAsString_(static_cast<int>(avg_cpu_*100.0)),70,220,Font_11x18,COLOR_GRAY);
@@ -1130,11 +1160,6 @@ void RenderTab4()
         tft_lib.RenderCvSelector(0,3,0,paramTftValue[GW_LFO1_TARGET],paramTftValue[GW_LFO1_ATT],"LFO1",cv_selector);
         tft_lib.RenderCvSelector(2,3,0,paramTftValue[GW_LFO2_TARGET],paramTftValue[GW_LFO2_ATT],"LFO2",cv_selector);
         tft_lib.RenderAreaInd(3,0);
-
-        tft_lib.RenderPotParam(0,paramTftPotValue[0],"PITCH");
-        tft_lib.RenderPotParam(1,paramTftPotValue[1],"LENGTH");
-        tft_lib.RenderPotParam(2,paramTftPotValue[2],"POSITION");
-        tft_lib.RenderPotParam(3,paramTftPotValue[3],"DENSITY");
         
     }
 }
@@ -1167,6 +1192,7 @@ void clearMem() {
 
 void ReadSwitches()
 {
+
     hw.ProcessDigitalControls(encScale_);
     
     switch (mode_) {
@@ -1198,10 +1224,14 @@ void ReadSwitches()
             case 1:
                 tft_lib.area[tft_lib.tab] -= 1;
                 if(tft_lib.area[tft_lib.tab] < 0) {
-                    tft_lib.area[tft_lib.tab] = 3;
+                    tft_lib.area[tft_lib.tab] = 2;
                 }
                 break;
             case 2:
+                tft_lib.area[tft_lib.tab] -= 1;
+                if(tft_lib.area[tft_lib.tab] < 0) {
+                    tft_lib.area[tft_lib.tab] = 1;
+                }
             break;
             case 3:
                 tft_lib.area[tft_lib.tab] -= 1;
@@ -1225,7 +1255,13 @@ void ReadSwitches()
                 break;
             case 1:
                 tft_lib.area[tft_lib.tab] += 1;
-                if(tft_lib.area[tft_lib.tab] > 3) {
+                if(tft_lib.area[tft_lib.tab] > 2) {
+                    tft_lib.area[tft_lib.tab] = 0;
+                }
+                break;
+            case 2:
+                tft_lib.area[tft_lib.tab] += 1;
+                if(tft_lib.area[tft_lib.tab] > 1) {
                     tft_lib.area[tft_lib.tab] = 0;
                 }
                 break;
@@ -1248,19 +1284,16 @@ void ReadSwitches()
                 if(tft_lib.area[tft_lib.tab] == 0) {
                     paramTftValue[i+5] += hw.enc[i].Increment();
                     paramTftValue[i+5] = clamp_int(paramTftValue[i+5],0,100);                    
-                } else if(tft_lib.area[tft_lib.tab] == 1 && i < 3) {
+                } else if(tft_lib.area[tft_lib.tab] == 1 && i < 4) {
                     paramTftValue[i+9] += hw.enc[i].Increment();
                     paramTftValue[i+9] = clamp_int(paramTftValue[i+9],0,100);
                 } 
                 break;
             case 1:
-                if(tft_lib.area[tft_lib.tab] == 0 && i < 2) {
-                    paramTftValue[i+GW_IN_LVL] += hw.enc[i].Increment();
-                    paramTftValue[i+GW_IN_LVL] = clamp_int(paramTftValue[i+GW_IN_LVL],0,100);
-                } else if(tft_lib.area[tft_lib.tab] == 1 && i < 3) {
+                if (tft_lib.area[tft_lib.tab] == 0 && i < 3) {
                     paramTftValue[i+GW_RV_TIME] += hw.enc[i].Increment();
                     paramTftValue[i+GW_RV_TIME] = clamp_int(paramTftValue[i+GW_RV_TIME],0,100);
-                } else if(tft_lib.area[tft_lib.tab] == 2 && i < 3) {
+                } else if(tft_lib.area[tft_lib.tab] == 1 && i < 3) {
                     paramTftValue[i+GW_LFO_WAVE] += hw.enc[i].Increment();
                     if(i == 0) {
                         paramTftValue[GW_LFO_WAVE] = clamp_int(paramTftValue[GW_LFO_WAVE],0,9);
@@ -1270,7 +1303,7 @@ void ReadSwitches()
                         paramTftValue[i+GW_LFO_WAVE] = clamp_int(paramTftValue[i+GW_LFO_WAVE],0,100);
                     }
                     
-                } else if(tft_lib.area[tft_lib.tab] == 3 && i < 3) {
+                } else if(tft_lib.area[tft_lib.tab] == 2 && i < 3) {
                     paramTftValue[i+GW_LFO2_WAVE] += hw.enc[i].Increment();
                     if(i == 0) {
                         paramTftValue[GW_LFO2_WAVE] = clamp_int(paramTftValue[GW_LFO2_WAVE],0,9);
@@ -1284,8 +1317,11 @@ void ReadSwitches()
                 break;
             case 2:
                 if(tft_lib.area[tft_lib.tab] == 0 && i == 0) {
-                    paramTftValue[GW_WINDOW] += hw.enc[i].Increment();
-                    paramTftValue[GW_WINDOW] = clamp_int(paramTftValue[GW_WINDOW],0,100);
+                    paramTftValue[GW_IN_LVL] += hw.enc[i].Increment();
+                    paramTftValue[GW_IN_LVL] = clamp_int(paramTftValue[GW_IN_LVL],0,100);
+                } else if(tft_lib.area[tft_lib.tab] == 1 && i == 0) {
+                    paramTftValue[GW_OUT_LVL] += hw.enc[i].Increment();
+                    paramTftValue[GW_OUT_LVL] = clamp_int(paramTftValue[GW_OUT_LVL],0,100);
                 }
                 
                 break;
