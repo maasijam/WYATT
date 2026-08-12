@@ -20,6 +20,9 @@ A Daisy Seed based Granular Synth/Effect - ported from the awesome ["Grainwaves"
 - **Calibration:** Long press Func (5 sec)
 - **Restore preset:** Shift + Top1
 - **Change encoder increment size:** Shift + turn encoder (10 steps)
+- With the four big top buttons you switch between the parameter pages
+- Use the Up/Down buttons to select the row you wish to edit using the encoders.
+- To start recording, use the LED button below the Shift button.
 
 
 ## Parameter pages
