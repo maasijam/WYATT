@@ -170,7 +170,7 @@ bool DaisyWyatt::Trigger()
 }
 
 
-void DaisyWyatt::ProcessDigitalControls(int encScale)
+void DaisyWyatt::ProcessDigitalControls()
 {
     switches_sr_.Update();
     
@@ -184,7 +184,7 @@ void DaisyWyatt::ProcessDigitalControls(int encScale)
 
     for (size_t j = 0; j < ENC_LAST; j++)
     {
-        enc[j].Debounce(encScale);
+        enc[j].Debounce();
     }   
     
 }
@@ -297,6 +297,17 @@ void DaisyWyatt::InitEncoder()
     enc[2].Init(ENC3_A_PIN, ENC3_B_PIN);
     enc[3].Init(ENC4_A_PIN, ENC4_B_PIN);
    
+} 
+
+int DaisyWyatt::EncoderInc(size_t i, bool shiftState, int shiftInc) {
+    int turnDirection = enc[i].Increment();
+    if (turnDirection != 0) {
+        int  stepSize = shiftState ? shiftInc : 1;
+        return turnDirection * stepSize;
+    } else {
+        return 0;
+    }
+
 } 
 
 void DaisyWyatt::InitMidi()

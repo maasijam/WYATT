@@ -16,7 +16,7 @@ void EncoderNoSwitch::Init(Pin a, Pin b, float update_rate)
     a_ = b_ = 0xff;
 }
 
-void EncoderNoSwitch::Debounce(int encscale)
+void EncoderNoSwitch::Debounce()
 {
     // update no faster than 1kHz
     uint32_t now = System::GetNow();
@@ -35,11 +35,11 @@ void EncoderNoSwitch::Debounce(int encscale)
         inc_ = 0; // reset inc_ first
         if((a_ & 0x03) == 0x02 && (b_ & 0x03) == 0x00)
         {
-            inc_ = 1 * encscale;
+            inc_ = 1;
         }
         else if((b_ & 0x03) == 0x02 && (a_ & 0x03) == 0x00)
         {
-            inc_ = -1 * encscale;
+            inc_ = -1;
         }
     }
 

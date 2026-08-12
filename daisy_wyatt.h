@@ -191,7 +191,7 @@ enum Leds
     void ProcessAnalogControls();
 
     /** Process all digital controls */
-    void ProcessDigitalControls(int encScale = 1);
+    void ProcessDigitalControls();
 
     /** Process Analog and Digital Controls */
     inline void ProcessAllControls()
@@ -206,6 +206,8 @@ enum Leds
    */
     float GetKnobValue(int idx) const;
     float GetCvValue(int idx) const;
+
+    int EncoderInc(size_t enc, bool shiftState, int shiftInc = 10);
 
     /** Getter for CV objects.
         \param idx The CV input of interest.

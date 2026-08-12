@@ -17,7 +17,7 @@ using namespace std;
 using namespace settings;
 using namespace tftlib;
 
-const char* version = "v 0.2";
+const char* version = "v 0.21";
 const char* project_name = "Grainstorm";
 
 
@@ -186,7 +186,6 @@ void RenderCalibration();
 float GetLfoFreq(int range, float speed);
 
 int wav_y = 5;
-int encScale_ = 1;
 
 float getRndOct(float potvalue);
 void clearMem();
@@ -1193,7 +1192,7 @@ void clearMem() {
 void ReadSwitches()
 {
 
-    hw.ProcessDigitalControls(encScale_);
+    hw.ProcessDigitalControls();
     
     switch (mode_) {
       case UI_MODE_START:
@@ -1282,19 +1281,19 @@ void ReadSwitches()
             {
             case 0:
                 if(tft_lib.area[tft_lib.tab] == 0) {
-                    paramTftValue[i+5] += hw.enc[i].Increment();
+                    paramTftValue[i+5] += hw.EncoderInc(i,hw.SwitchState(hw.S_SHIFT));
                     paramTftValue[i+5] = clamp_int(paramTftValue[i+5],0,100);                    
                 } else if(tft_lib.area[tft_lib.tab] == 1 && i < 4) {
-                    paramTftValue[i+9] += hw.enc[i].Increment();
+                    paramTftValue[i+9] += hw.EncoderInc(i,hw.SwitchState(hw.S_SHIFT));
                     paramTftValue[i+9] = clamp_int(paramTftValue[i+9],0,100);
                 } 
                 break;
             case 1:
                 if (tft_lib.area[tft_lib.tab] == 0 && i < 3) {
-                    paramTftValue[i+GW_RV_TIME] += hw.enc[i].Increment();
+                    paramTftValue[i+GW_RV_TIME] += hw.EncoderInc(i,hw.SwitchState(hw.S_SHIFT));
                     paramTftValue[i+GW_RV_TIME] = clamp_int(paramTftValue[i+GW_RV_TIME],0,100);
                 } else if(tft_lib.area[tft_lib.tab] == 1 && i < 3) {
-                    paramTftValue[i+GW_LFO_WAVE] += hw.enc[i].Increment();
+                    paramTftValue[i+GW_LFO_WAVE] += hw.EncoderInc(i,hw.SwitchState(hw.S_SHIFT));
                     if(i == 0) {
                         paramTftValue[GW_LFO_WAVE] = clamp_int(paramTftValue[GW_LFO_WAVE],0,9);
                     } else if(i == 2) {
@@ -1304,7 +1303,7 @@ void ReadSwitches()
                     }
                     
                 } else if(tft_lib.area[tft_lib.tab] == 2 && i < 3) {
-                    paramTftValue[i+GW_LFO2_WAVE] += hw.enc[i].Increment();
+                    paramTftValue[i+GW_LFO2_WAVE] += hw.EncoderInc(i,hw.SwitchState(hw.S_SHIFT));
                     if(i == 0) {
                         paramTftValue[GW_LFO2_WAVE] = clamp_int(paramTftValue[GW_LFO2_WAVE],0,9);
                     } else if(i == 2) {
@@ -1317,10 +1316,10 @@ void ReadSwitches()
                 break;
             case 2:
                 if(tft_lib.area[tft_lib.tab] == 0 && i == 0) {
-                    paramTftValue[GW_IN_LVL] += hw.enc[i].Increment();
+                    paramTftValue[GW_IN_LVL] += hw.EncoderInc(i,hw.SwitchState(hw.S_SHIFT));
                     paramTftValue[GW_IN_LVL] = clamp_int(paramTftValue[GW_IN_LVL],0,100);
                 } else if(tft_lib.area[tft_lib.tab] == 1 && i == 0) {
-                    paramTftValue[GW_OUT_LVL] += hw.enc[i].Increment();
+                    paramTftValue[GW_OUT_LVL] += hw.EncoderInc(i,hw.SwitchState(hw.S_SHIFT));
                     paramTftValue[GW_OUT_LVL] = clamp_int(paramTftValue[GW_OUT_LVL],0,100);
                 }
                 
@@ -1328,7 +1327,7 @@ void ReadSwitches()
             case 3:
                 if(tft_lib.area[tft_lib.tab] == 0) {
                     if(i == 0) {
-                        paramWavVal += hw.enc[i].Increment();
+                        paramWavVal += hw.EncoderInc(i,hw.SwitchState(hw.S_SHIFT));
                         paramWavVal = clamp_int(paramWavVal,-1,filenames.size()-1);
                         paramTftValue[GW_WAV_FILE] = paramWavVal;
                         if(hw.SwitchRisingEdge(hw.S_ENC1) && paramWavVal > -1) {
@@ -1342,28 +1341,28 @@ void ReadSwitches()
                 }
                 else if(tft_lib.area[tft_lib.tab] == 1) {
                     if(i == 0) {
-                        paramTftValue[GW_CV1_TARGET] += hw.enc[i].Increment();
+                        paramTftValue[GW_CV1_TARGET] += hw.EncoderInc(i,hw.SwitchState(hw.S_SHIFT));
                         paramTftValue[GW_CV1_TARGET] = clamp_int(paramTftValue[GW_CV1_TARGET],0,kNumCvParams-1);
                     } else if(i == 2){
-                        paramTftValue[GW_CV2_TARGET] += hw.enc[i].Increment();
+                        paramTftValue[GW_CV2_TARGET] += hw.EncoderInc(i,hw.SwitchState(hw.S_SHIFT));
                         paramTftValue[GW_CV2_TARGET] = clamp_int(paramTftValue[GW_CV2_TARGET],0,kNumCvParams-1);
                     } else if(i == 1) {
-                        paramTftValue[GW_CV1_ATT] += hw.enc[i].Increment();
+                        paramTftValue[GW_CV1_ATT] += hw.EncoderInc(i,hw.SwitchState(hw.S_SHIFT));
                         paramTftValue[GW_CV1_ATT] = clamp_int(paramTftValue[GW_CV1_ATT],0,100);
                     } else {
-                        paramTftValue[GW_CV2_ATT] += hw.enc[i].Increment();
+                        paramTftValue[GW_CV2_ATT] += hw.EncoderInc(i,hw.SwitchState(hw.S_SHIFT));
                         paramTftValue[GW_CV2_ATT] = clamp_int(paramTftValue[GW_CV2_ATT],0,100);
                     }
                     
                 }
                 else if(tft_lib.area[tft_lib.tab] == 2) {
                     if(i == 0) {
-                        paramTftValue[GW_CV3_TARGET] += hw.enc[i].Increment();
+                        paramTftValue[GW_CV3_TARGET] += hw.EncoderInc(i,hw.SwitchState(hw.S_SHIFT));
                         paramTftValue[GW_CV3_TARGET] = clamp_int(paramTftValue[GW_CV3_TARGET],0,kNumCvParams-1);
                     } else if(i == 2){
                         
                     } else if(i == 1) {
-                        paramTftValue[GW_CV3_ATT] += hw.enc[i].Increment();
+                        paramTftValue[GW_CV3_ATT] += hw.EncoderInc(i,hw.SwitchState(hw.S_SHIFT));
                         paramTftValue[GW_CV3_ATT] = clamp_int(paramTftValue[GW_CV3_ATT],0,100);
                     } else {
                         
@@ -1371,16 +1370,16 @@ void ReadSwitches()
                 }
                 else if(tft_lib.area[tft_lib.tab] == 3) {
                     if(i == 0) {
-                        paramTftValue[GW_LFO1_TARGET] += hw.enc[i].Increment();
+                        paramTftValue[GW_LFO1_TARGET] += hw.EncoderInc(i,hw.SwitchState(hw.S_SHIFT));
                         paramTftValue[GW_LFO1_TARGET] = clamp_int(paramTftValue[GW_LFO1_TARGET],0,kNumCvParams-1);
                     }  else if(i == 1) {
-                        paramTftValue[GW_LFO1_ATT] += hw.enc[i].Increment();
+                        paramTftValue[GW_LFO1_ATT] += hw.EncoderInc(i,hw.SwitchState(hw.S_SHIFT));
                         paramTftValue[GW_LFO1_ATT] = clamp_int(paramTftValue[GW_LFO1_ATT],0,100);
                     } else if(i == 2) {
-                        paramTftValue[GW_LFO2_TARGET] += hw.enc[i].Increment();
+                        paramTftValue[GW_LFO2_TARGET] += hw.EncoderInc(i,hw.SwitchState(hw.S_SHIFT));
                         paramTftValue[GW_LFO2_TARGET] = clamp_int(paramTftValue[GW_LFO2_TARGET],0,kNumCvParams-1);
                     }  else if(i == 3) {
-                        paramTftValue[GW_LFO2_ATT] += hw.enc[i].Increment();
+                        paramTftValue[GW_LFO2_ATT] += hw.EncoderInc(i,hw.SwitchState(hw.S_SHIFT));
                         paramTftValue[GW_LFO2_ATT] = clamp_int(paramTftValue[GW_LFO2_ATT],0,100);
                     }                    
                 }
