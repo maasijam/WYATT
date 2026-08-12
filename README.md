@@ -19,7 +19,7 @@
 <br/>
 
 ## Examples
-| Project name | Description | App type | Version |
+| Project name | Description | App type | Firmware |
 | ------------ | -------- | -----------| --------- |
 | [Grainstorm](Examples/grainstorm/) | Granular synth / effect | BOOT_SRAM | [grainstorm-0.21.bin](Examples/grainstorm/firmware/) |
 | [hwtest](Examples/hwtest/) | Wyatt Hardware test | BOOT_NONE | [hwtest-1.0.bin](Examples/hwtest/firmware/) |
