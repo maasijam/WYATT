@@ -38,3 +38,30 @@ The four knobs are routed to the following paramter
 - LENGTH: Length of the grains
 - POSITION: Speed of the spawn points. Center = 0 
 - DENSITY: Number of grains
+
+### PAGE 2
+
+**Reverb**
+- TIME: Decay time
+- DAMP: Lowpass filter
+- HPF: Highpass filter
+
+**LFO1**
+- WAVE: waveform – Sine, Triangle, Saw, Ramp, Square, SmoothRandom, Random, PTRI, PSAW,PSQR
+- SPEED: Frequence
+- RANGE: Slow, Med, Fast
+
+**LFO2**
+- WAVE: waveform – Sine, Triangle, Saw, Ramp, Square, SmoothRandom, Random, PTRI, PSAW,PSQR
+- SPEED: Frequence
+- RANGE: Slow, Med, Fast
+
+### PAGE 3
+
+**VU-Meter**
+- Input level, output level
+
+### PAGE 4
+- WAV: Load wav file from sd card – select and click the encoder to load (16bit Mono 48khz – have to be inside a folder „samples“ on root)
+- CV1-CV3: Target parameter and attenuator
+- LFO1-LFO2: Target parameter and attenuator
