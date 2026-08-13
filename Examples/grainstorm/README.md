@@ -16,7 +16,7 @@ A Daisy Seed based Granular Synth/Effect - ported from the awesome ["Grainwaves"
 - Auto calibration for the cv inputs
 
 ## UI
-- **Save:** Shift + Func
+- **Save preset:** Shift + Func
 - **Calibration:** Long press Func (5 sec)
 - **Restore preset:** Shift + Top1
 - **Change encoder increment size:** Shift + turn encoder (10 steps)
