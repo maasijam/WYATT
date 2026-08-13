@@ -10,7 +10,7 @@ A Daisy Seed based Granular Synth/Effect - ported from the awesome ["Grainwaves"
 - Editable grains window
 - Reverb
 - 2 LFOs (assignable to most of the parameter)
-- Load wav files from SD Card (16bit 48kHz Mono)
+- Load wav file from SD Card (16bit 48kHz Mono)
 - Individually assignable CV inputs
 - Preset
 - Auto calibration for the cv inputs
