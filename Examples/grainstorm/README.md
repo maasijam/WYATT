@@ -68,3 +68,7 @@ The four knobs are routed to the following paramter
 - **WAV:** Load wav file from sd card – select and click the encoder to load (16bit Mono 48khz – have to be inside a folder „samples“ on root)
 - **CV1-CV3:** Target parameter and attenuator
 - **LFO1-LFO2:** Target parameter and attenuator
+
+### ToDo
+- [] Save recorded audio to sd card
+- [] MIDI implementation
