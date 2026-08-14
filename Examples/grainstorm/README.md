@@ -51,12 +51,12 @@ The four knobs are routed to the following paramter
 
 **LFO1**
 - **WAVE:** waveform – Sine, Triangle, Saw, Ramp, Square, SmoothRandom, Random, PTRI, PSAW,PSQR
-- **SPEED:** Frequence
+- **SPEED:** Frequency
 - **RANGE:** Slow, Med, Fast
 
 **LFO2**
 - **WAVE:** waveform – Sine, Triangle, Saw, Ramp, Square, SmoothRandom, Random, PTRI, PSAW,PSQR
-- **SPEED:** Frequence
+- **SPEED:** Frequency
 - **RANGE:** Slow, Med, Fast
 
 ### PAGE 3
