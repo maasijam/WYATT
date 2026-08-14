@@ -70,5 +70,5 @@ The four knobs are routed to the following paramter
 - **LFO1-LFO2:** Target parameter and attenuator
 
 ### ToDo
-- [] Save recorded audio to sd card
-- [] MIDI implementation
+- [ ] Save recorded audio to sd card
+- [ ] MIDI implementation
