@@ -72,3 +72,5 @@ The four knobs are routed to the following paramter
 ## ToDo
 - [ ] Save recorded audio to sd card
 - [ ] MIDI implementation
+- [ ] Better fonts
+- [ ] Load last selected wav file on startup
