@@ -44,7 +44,7 @@ The four knobs are routed to the following paramter
 - **DENSITY:** Number of grains
 
 ### PAGE 2
-
+![maasijam wyatt grainstorm page 2](images/DSC00881sm.png)
 **Reverb**
 - **TIME:** Decay time
 - **DAMP:** Lowpass filter
@@ -61,11 +61,12 @@ The four knobs are routed to the following paramter
 - **RANGE:** Slow, Med, Fast
 
 ### PAGE 3
-
+![maasijam wyatt grainstorm page 3](images/DSC00882sm.png)
 **VU-Meter**
 - Input level, output level
 
 ### PAGE 4
+![maasijam wyatt grainstorm page 4](images/DSC00883sm.png)
 - **WAV:** Load wav file from sd card – select and click the encoder to load (16bit Mono 48khz – have to be inside a folder „samples“ on root)
 - **CV1-CV3:** Target parameter and attenuator
 - **LFO1-LFO2:** Target parameter and attenuator
