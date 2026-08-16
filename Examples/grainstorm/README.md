@@ -44,7 +44,7 @@ The four knobs are routed to the following paramter
 - **DENSITY:** Number of grains
 
 ### PAGE 2
-![maasijam wyatt grainstorm page 2](images/DSC00881sm.png)
+![maasijam wyatt grainstorm page 2](images/DSC00881sm.png)<br />
 **Reverb**
 - **TIME:** Decay time
 - **DAMP:** Lowpass filter
