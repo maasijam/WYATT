@@ -27,6 +27,7 @@ A Daisy Seed based Granular Synth/Effect - ported from the awesome ["Grainwaves"
 
 ## Parameter pages
 ### PAGE 1
+![maasijam wyatt grainstorm page 1](images/DSC00880sm.png)
 - **COUNT:** 2-7 spawn points
 - **SPLAY:** spreading the spawn points
 - **JITTER:** random starting points of the grains
