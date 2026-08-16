@@ -61,7 +61,7 @@ The four knobs are routed to the following paramter
 - **RANGE:** Slow, Med, Fast
 
 ### PAGE 3
-![maasijam wyatt grainstorm page 3](images/DSC00882sm.png)
+![maasijam wyatt grainstorm page 3](images/DSC00882sm.png)<br />
 **VU-Meter**
 - Input level, output level
 
