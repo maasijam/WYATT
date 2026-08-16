@@ -10,13 +10,13 @@ A Daisy Seed based Granular Synth/Effect - ported from the awesome ["Grainwaves"
 - Editable grains window
 - Reverb
 - 2 LFOs (assignable to most of the parameter)
-- Load wav files from SD Card (16bit 48kHz Mono)
+- Load wav file from SD Card (16bit 48kHz Mono)
 - Individually assignable CV inputs
 - Preset
 - Auto calibration for the cv inputs
 
 ## UI
-- **Save:** Shift + Func
+- **Save preset:** Shift + Func
 - **Calibration:** Long press Func (5 sec)
 - **Restore preset:** Shift + Top1
 - **Change encoder increment size:** Shift + turn encoder (10 steps)
@@ -51,12 +51,12 @@ The four knobs are routed to the following paramter
 
 **LFO1**
 - **WAVE:** waveform – Sine, Triangle, Saw, Ramp, Square, SmoothRandom, Random, PTRI, PSAW,PSQR
-- **SPEED:** Frequence
+- **SPEED:** Frequency
 - **RANGE:** Slow, Med, Fast
 
 **LFO2**
 - **WAVE:** waveform – Sine, Triangle, Saw, Ramp, Square, SmoothRandom, Random, PTRI, PSAW,PSQR
-- **SPEED:** Frequence
+- **SPEED:** Frequency
 - **RANGE:** Slow, Med, Fast
 
 ### PAGE 3
@@ -68,3 +68,9 @@ The four knobs are routed to the following paramter
 - **WAV:** Load wav file from sd card – select and click the encoder to load (16bit Mono 48khz – have to be inside a folder „samples“ on root)
 - **CV1-CV3:** Target parameter and attenuator
 - **LFO1-LFO2:** Target parameter and attenuator
+
+## ToDo
+- [ ] Save recorded audio to sd card
+- [ ] MIDI implementation
+- [ ] Better fonts
+- [ ] Load last selected wav file on startup
