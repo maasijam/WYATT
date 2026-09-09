@@ -31,7 +31,7 @@ A Daisy Seed based Granular Synth/Effect - ported from the awesome ["Grainwaves"
 - **COUNT:** 2-7 spawn points
 - **SPLAY:** spreading the spawn points
 - **JITTER:** random starting points of the grains
-- **SCAN:** If the position knob is centered, scan can change the position of the span points
+- **SCAN:** If the position knob is centered, scan can change the position of the spawn points
 - **RND_PAN:** The grains spawn randomly in the stereo image
 - **RND_OCT:** Random octaves of the grains (-2 to +2 octaves)
 - **WINDOW:** Envelope of the grains
