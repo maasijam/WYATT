@@ -169,6 +169,7 @@ struct the_calibration {
                 return false;
             }
         }
+        return true;
     }
     bool operator!=(const the_calibration &rhs) { return !operator==(rhs); }
 };
