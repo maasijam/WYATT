@@ -9,7 +9,7 @@ APP_TYPE = BOOT_SRAM
 LDSCRIPT=daisy.lds
 
 # Library Locations
-LIBDAISY_DIR = ../../libdaisy
+LIBDAISY_DIR = ../../libDaisy
 DAISYSP_DIR = ../../DaisySP
 
 
