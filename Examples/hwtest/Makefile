@@ -7,7 +7,7 @@ APP_TYPE = BOOT_NONE
 
 
 # Library Locations
-LIBDAISY_DIR = ../../libdaisy
+LIBDAISY_DIR = ../../libDaisy
 DAISYSP_DIR = ../../DaisySP
 
 
